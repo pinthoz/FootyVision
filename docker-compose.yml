@@ -1,0 +1,37 @@
+services:
+  db:
+    image: postgres:16
+    container_name: footyvision-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-footy}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-footy}
+      POSTGRES_DB: ${POSTGRES_DB:-footyvision}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-footy} -d ${POSTGRES_DB:-footyvision}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    container_name: footyvision-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_USER: ${POSTGRES_USER:-footy}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-footy}
+      POSTGRES_DB: ${POSTGRES_DB:-footyvision}
+    ports:
+      - "8000:8000"
+    command: uvicorn footyvision.api.main:app --host 0.0.0.0 --port 8000
+
+volumes:
+  pgdata:
