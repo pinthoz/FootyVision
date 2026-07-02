@@ -11,9 +11,16 @@ interprets them** (scouting reports, comparisons, natural-language search).
 
 ## Status
 
-**Phase 0 — Foundations (current).** Project scaffold, Postgres schema, and a working ETL
-that turns [StatsBomb Open Data](https://github.com/statsbomb/open-data) event streams into
-per-player season statistics. See [docs/ROADMAP.md](docs/ROADMAP.md) for what comes next.
+- **Phase 0 — Foundations ✅.** Scaffold, Postgres schema, and an ETL that turns
+  [StatsBomb Open Data](https://github.com/statsbomb/open-data) event streams into per-player
+  season statistics (minutes, progressive passes/carries, defensive actions, per-90 rates).
+- **Phase 1 — Similarity Engine ✅.** z-score *within position group* + cosine similarity
+  (`/players/{id}/similar`), plus scouting-radar percentiles (`/players/{id}/radar`) and an
+  interactive radar UI ([frontend/radar_demo.html](frontend/radar_demo.html)).
+- **Phase 2 — LLM Scouting Reports ✅.** Reports grounded in computed stats (`POST /players/{id}/report`)
+  via a local OpenAI-compatible LLM (LM Studio / Ollama); the model explains, it never invents numbers.
+
+See [docs/ROADMAP.md](docs/ROADMAP.md) for what comes next (NL search, talent score).
 
 ## Architecture (target)
 

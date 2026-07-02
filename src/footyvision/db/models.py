@@ -42,7 +42,7 @@ class Competition(Base):
     name: Mapped[str] = mapped_column(String(120))
     country: Mapped[str | None] = mapped_column(String(120))
 
-    seasons: Mapped[list["Season"]] = relationship(back_populates="competition")
+    seasons: Mapped[list[Season]] = relationship(back_populates="competition")
 
 
 class Season(Base):
@@ -54,7 +54,7 @@ class Season(Base):
     sb_season_id: Mapped[int] = mapped_column(Integer)  # StatsBomb season_id
     name: Mapped[str] = mapped_column(String(60))  # e.g. "2015/2016"
 
-    competition: Mapped["Competition"] = relationship(back_populates="seasons")
+    competition: Mapped[Competition] = relationship(back_populates="seasons")
 
 
 class Team(Base):

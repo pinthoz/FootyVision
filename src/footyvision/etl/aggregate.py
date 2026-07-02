@@ -120,8 +120,8 @@ def aggregate_match(events: pd.DataFrame) -> pd.DataFrame:
     loc = _col(ev, "location")
     pass_end = _col(ev, "pass_end_location")
     carry_end = _col(ev, "carry_end_location")
-    pass_prog = [_progress(a, b) for a, b in zip(loc, pass_end)]
-    carry_prog = [_progress(a, b) for a, b in zip(loc, carry_end)]
+    pass_prog = [_progress(a, b) for a, b in zip(loc, pass_end, strict=False)]
+    carry_prog = [_progress(a, b) for a, b in zip(loc, carry_end, strict=False)]
     ev["is_prog_pass"] = ev["is_pass_complete"] & (
         pd.Series(pass_prog, index=ev.index) >= _PROG_PASS_THRESHOLD
     )

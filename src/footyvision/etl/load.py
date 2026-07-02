@@ -34,7 +34,9 @@ def _parse_date(value) -> date | None:
         return None
 
 
-def _get_or_create_season(session: Session, competition_id: int, sb_season_id: int, name: str) -> Season:
+def _get_or_create_season(
+    session: Session, competition_id: int, sb_season_id: int, name: str
+) -> Season:
     season = session.scalar(
         select(Season).where(
             Season.competition_id == competition_id, Season.sb_season_id == sb_season_id
@@ -56,11 +58,19 @@ def load_match(session: Session, match_row, competition_id: int, sb_season_id: i
     if agg.empty:
         return 0
 
-    name_to_team_id: dict[str, int] = {}
-    for r in agg.itertuples(index=False):
-        session.merge(Team(id=int(r.team_id), name=r.team))
-        session.merge(Player(id=int(r.player_id), name=r.player))
-        name_to_team_id[r.team] = int(r.team_id)
+    # Upsert dimension rows first and flush so their PKs exist before the match /
+    # stats rows reference them. The ORM's flush ordering is driven by relationships,
+    # and these FKs are bare columns, so we enforce parent-before-child explicitly.
+    # Deduplicate by PK: with autoflush off, merging the same PK twice before a flush
+    # would create duplicate pending INSERTs (a team repeats once per player).
+    teams = {int(r.team_id): r.team for r in agg.itertuples(index=False)}
+    players = {int(r.player_id): r.player for r in agg.itertuples(index=False)}
+    name_to_team_id = {name: tid for tid, name in teams.items()}
+    for tid, tname in teams.items():
+        session.merge(Team(id=tid, name=tname))
+    for pid, pname in players.items():
+        session.merge(Player(id=pid, name=pname))
+    session.flush()
 
     session.merge(
         Match(
@@ -72,6 +82,7 @@ def load_match(session: Session, match_row, competition_id: int, sb_season_id: i
             away_team_id=name_to_team_id.get(match_row.get("away_team")),
         )
     )
+    session.flush()
 
     session.execute(delete(PlayerMatchStats).where(PlayerMatchStats.match_id == match_id))
     for r in agg.itertuples(index=False):
@@ -104,9 +115,14 @@ def load_competition_season(
     meta = meta.iloc[0]
 
     session.merge(
-        Competition(id=competition_id, name=meta["competition_name"], country=meta.get("country_name"))
+        Competition(
+            id=competition_id,
+            name=meta["competition_name"],
+            country=meta.get("country_name"),
+        )
     )
     _get_or_create_season(session, competition_id, season_id, str(meta["season_name"]))
+    session.flush()  # persist competition + season before any match references them
 
     matches_df = statsbomb.matches(competition_id, season_id)
     if limit:
