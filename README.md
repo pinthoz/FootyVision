@@ -22,8 +22,12 @@ interprets them** (scouting reports, comparisons, natural-language search).
 - **Phase 3 — Natural-Language Search ✅.** Free-text queries become a validated Pydantic
   `PlayerQuery` (never raw SQL) → parameterised, injection-safe search. `POST /search` (LLM)
   and `POST /search/structured` (no LLM).
+- **Phase 4 — Performance Score + XGBoost/SHAP ✅.** A transparent position-weighted
+  Performance Score (`GET /players/{id}/score`, `GET /rankings`) plus an XGBoost position
+  classifier (~85% held-out) with SHAP explainability, style profiles and role-mismatch
+  detection (`footyvision talent-report`).
 
-See [docs/ROADMAP.md](docs/ROADMAP.md) for what comes next (talent score, value predictor).
+See [docs/ROADMAP.md](docs/ROADMAP.md) for what comes next (value predictor, career simulator).
 
 ## Architecture (target)
 

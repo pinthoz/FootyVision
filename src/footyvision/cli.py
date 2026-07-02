@@ -82,5 +82,40 @@ def aggregate_cmd(
         console.print(f"[green]{written} player-season rows aggregated.[/green]")
 
 
+@app.command("talent-report")
+def talent_report(
+    min_minutes: int | None = typer.Option(None, "--min-minutes"),
+) -> None:
+    """Train the XGBoost position classifier and print its honest evaluation + SHAP."""
+    # Imported lazily so the heavy ML stack only loads for this command.
+    from footyvision.ml.features import load_feature_frame
+    from footyvision.ml.talent import role_mismatches, shap_importance, train_position_classifier
+
+    settings = get_settings()
+    mm = settings.min_minutes if min_minutes is None else min_minutes
+    with SessionLocal() as session:
+        frame = load_feature_frame(session, mm)
+        console.print(f"[cyan]Training position classifier on {len(frame)} players...[/cyan]")
+        tm = train_position_classifier(frame)
+        console.print(
+            f"[green]Held-out accuracy: {tm.test_accuracy:.1%}[/green] "
+            f"(train={tm.n_train}, test={tm.n_test}, classes={tm.classes})"
+        )
+
+        imp = Table(title="Top features by mean |SHAP| — which metrics define position")
+        imp.add_column("feature")
+        imp.add_column("mean |SHAP|", justify="right")
+        for row in shap_importance(tm, frame, top_n=10):
+            imp.add_row(row["feature"], f"{row['mean_abs_shap']:.3f}")
+        console.print(imp)
+
+        mism = Table(title="Role mismatches — stats resemble a different position")
+        for col in ["player", "listed", "plays like", "confidence"]:
+            mism.add_column(col)
+        for r in role_mismatches(tm, frame, top_n=10):
+            mism.add_row(r["name"], r["listed"], r["plays_like"], f"{r['confidence']:.2f}")
+        console.print(mism)
+
+
 if __name__ == "__main__":
     app()

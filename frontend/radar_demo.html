@@ -62,6 +62,7 @@
         <div class="slot b"><div class="muted">Player B</div><div class="who" id="slotB">—</div></div>
       </div>
       <button class="clear" onclick="clearSlots()">Clear</button>
+      <div id="scoreA" class="muted" style="margin-top:10px; font-size:12.5px;"></div>
       <div class="hint">Click a result to fill Player A, then another to fill Player B and
         compare. The radar shows each metric as a percentile vs peers in the same role.</div>
     </div>
@@ -131,9 +132,26 @@ async function pick(id, name) {
   if (!radar) { alert(`${name}: no season above the minutes floor yet.`); return; }
   slots[slot] = { id, name, radar };
   $("slot" + slot).textContent = `${name}`;
-  if (slot === "A") { loadSimilar(id); $("reportBtn").disabled = false; }
+  if (slot === "A") { loadSimilar(id); loadScore(id); $("reportBtn").disabled = false; }
   draw();
 }
+
+async function loadScore(id) {
+  $("scoreA").textContent = "Scoring…";
+  try {
+    const res = await fetch(`${API}/players/${id}/score`);
+    if (!res.ok) { $("scoreA").textContent = ""; return; }
+    const s = await res.json();
+    const style = Object.entries(s.style_profile)
+      .sort((a, b) => b[1] - a[1])[0];
+    $("scoreA").innerHTML = `<b style="color:var(--accent); font-size:15px;">`
+      + `Performance Score ${s.performance_score}</b> `
+      + `<span style="color:var(--muted)">· plays like ${style[0]} `
+      + `(${Math.round(style[1] * 100)}%)</span>`;
+  } catch { $("scoreA").textContent = ""; }
+}
+
+async function loadSimilar(id) {
 
 async function generateReport() {
   if (!slots.A) return;
@@ -169,6 +187,7 @@ function clearSlots() {
   slots.A = slots.B = null;
   $("slotA").textContent = $("slotB").textContent = "—";
   $("similar").innerHTML = "Pick a player to see matches.";
+  $("scoreA").textContent = "";
   $("reportBtn").disabled = true;
   $("report").textContent = "Pick Player A, then generate a grounded scouting report "
     + "(needs a local LLM running — LM Studio / Ollama).";

@@ -47,10 +47,16 @@ returns per-90 stats.
 - *Known gap:* no age/DOB in the dataset, so "under-23"-style filters can't be answered
   (the prompt tells the LLM to ignore them).
 
-## Phase 4 — Talent Score (ML)
-- Supervised model (XGBoost) over per-90 features (+ age when available) for an upside score.
-- **SHAP** for explainability so the score is defensible, not a black box.
-- Honest evaluation: train/test split by season, report metrics, avoid leakage.
+## Phase 4 — Performance Score + XGBoost/SHAP ✅
+- No future/age/value labels exist, so instead of a fabricated "potential" target we ship:
+- **Performance Score (0-100)** — transparent, position-weighted percentile composite,
+  fully traceable to metric contributions: [ml/scoring.py](../src/footyvision/ml/scoring.py).
+- **XGBoost position classifier** on a REAL label (position group from style), with honest
+  held-out evaluation (~85% accuracy), **SHAP** feature importance, per-player *style
+  profiles*, and *role-mismatch* detection (e.g. Dani Alves plays like a MID):
+  [ml/talent.py](../src/footyvision/ml/talent.py).
+- API: `GET /players/{id}/score`, `GET /rankings`, `GET /talent/model-info`.
+  CLI: `footyvision talent-report` (accuracy + SHAP + mismatches).
 
 ## Phase 5 — Stretch goals
 - **Market Value Predictor** (LightGBM) — requires a value dataset (e.g. a static Kaggle

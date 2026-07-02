@@ -26,13 +26,15 @@ dependencies = [
     "rich>=13.7",
     # LLM (OpenAI-compatible HTTP client for local LM Studio / Ollama)
     "httpx>=0.27",
+    # ML: similarity, Performance Score, XGBoost position classifier + SHAP
+    "scikit-learn>=1.5",
+    "xgboost>=2.0",
+    "shap>=0.45",
 ]
 
 [project.optional-dependencies]
 ml = [
-    "scikit-learn>=1.5",
-    "xgboost>=2.0",
-    "shap>=0.45",
+    # Optional: UMAP 2D "player map" (visualisation only, Phase 1 stretch).
     "umap-learn>=0.5",
 ]
 dev = [

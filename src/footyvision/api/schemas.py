@@ -102,3 +102,34 @@ class SearchResponse(BaseModel):
     interpreted: dict
     count: int
     results: list[SearchResultRow]
+
+
+class ScoreResponse(BaseModel):
+    player_id: int
+    name: str
+    position_group: str
+    performance_score: float
+    breakdown: list[dict]
+    style_profile: dict[str, float]
+
+
+class RankingRow(BaseModel):
+    player_id: int
+    name: str
+    competition: str | None
+    position_group: str
+    primary_position: str | None
+    performance_score: float
+
+
+class RankingsResponse(BaseModel):
+    count: int
+    results: list[RankingRow]
+
+
+class ModelInfoResponse(BaseModel):
+    task: str
+    classes: list[str]
+    test_accuracy: float
+    n_train: int
+    n_test: int

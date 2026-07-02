@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from footyvision import __version__
-from footyvision.api.routers import health, players, reports, search, similarity
+from footyvision.api.routers import health, players, reports, search, similarity, talent
 
 app = FastAPI(
     title="FootyVision API",
@@ -25,6 +25,7 @@ app.include_router(players.router)
 app.include_router(similarity.router)
 app.include_router(reports.router)
 app.include_router(search.router)
+app.include_router(talent.router)
 
 
 @app.get("/", tags=["meta"])
