@@ -67,6 +67,14 @@
     </div>
 
     <div class="panel" style="margin-top:16px;">
+      <label for="nlq">Natural-language search</label>
+      <input id="nlq" type="text" placeholder="e.g. La Liga forwards with xG per 90 over 0.5"
+             onkeydown="if(event.key==='Enter') nlSearch()" />
+      <div id="nlInterpreted" class="muted" style="margin-top:8px;"></div>
+      <div id="nlResults" class="results" style="max-height:240px;"></div>
+    </div>
+
+    <div class="panel" style="margin-top:16px;">
       <label>Most similar to Player A</label>
       <div id="similar" class="muted" style="margin-top:8px;">Pick a player to see matches.</div>
     </div>
@@ -191,6 +199,33 @@ function draw() {
     margin: { l: 60, r: 60, t: 30, b: 40 },
   };
   Plotly.react("chart", data, layout, { displayModeBar: false, responsive: true });
+}
+
+async function nlSearch() {
+  const q = $("nlq").value.trim();
+  if (!q) return;
+  $("nlResults").innerHTML = ""; $("nlInterpreted").textContent = "Interpreting…";
+  try {
+    const res = await fetch(`${API}/search`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: q }),
+    });
+    if (res.status === 503) {
+      $("nlInterpreted").textContent = "⚠️ NL search needs a local LLM running (LM Studio / Ollama).";
+      return;
+    }
+    if (res.status === 422) { $("nlInterpreted").textContent = "Couldn't turn that into a query."; return; }
+    if (!res.ok) { $("nlInterpreted").textContent = `Error ${res.status}.`; return; }
+    const data = await res.json();
+    const conds = (data.interpreted.conditions || [])
+      .map(c => `${c.field} ${c.op} ${c.value}`).join(", ") || "no filters";
+    $("nlInterpreted").textContent = `${data.count} results · interpreted: ${conds}`;
+    $("nlResults").innerHTML = data.results.map(r =>
+      `<div class="row" onclick="pick(${r.player_id}, '${r.name.replace(/'/g, "\\'")}')">
+         <span>${r.name}</span><span class="pos">${r.competition ?? ""}</span></div>`).join("");
+  } catch (e) {
+    $("nlInterpreted").textContent = "Request failed: " + e;
+  }
 }
 
 async function loadSimilar(id) {

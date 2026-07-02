@@ -41,9 +41,14 @@ class LLMClient:
         system: str,
         user: str,
         temperature: float = 0.4,
-        max_tokens: int = 900,
+        max_tokens: int = 1500,
     ) -> str:
-        """Send a system+user prompt, return the assistant's text."""
+        """Send a system+user prompt, return the assistant's text.
+
+        Note: reasoning models (e.g. Gemma 3n) spend tokens on hidden `reasoning_content`
+        before emitting `content`, so `max_tokens` must be generous or `content` comes back
+        empty (truncated mid-thought). Callers that need long answers raise it further.
+        """
         url = f"{self.base_url}/chat/completions"
         payload = {
             "model": self.model,

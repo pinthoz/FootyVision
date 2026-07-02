@@ -83,3 +83,22 @@ class ReportResponse(BaseModel):
 class ReportContextResponse(BaseModel):
     player_id: int
     context: dict
+
+
+class NLSearchRequest(BaseModel):
+    query: str
+
+
+class SearchResultRow(BaseModel):
+    player_id: int
+    name: str
+    competition: str | None
+    primary_position: str | None
+    position_group: str
+    stats: dict[str, float]
+
+
+class SearchResponse(BaseModel):
+    interpreted: dict
+    count: int
+    results: list[SearchResultRow]

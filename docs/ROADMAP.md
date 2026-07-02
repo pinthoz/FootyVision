@@ -18,26 +18,34 @@ Guiding principle: **ML predicts, the LLM explains.**
 **Definition of done:** `footyvision load` populates the DB and `/players/{id}/seasons`
 returns per-90 stats.
 
-## Phase 1 — Similarity Engine
-- Build the player feature matrix from `player_season_stats` (per-90 features).
-- **Standardise per position group** (z-score) — never compare a striker to a centre-back.
-- Cosine / Euclidean similarity → "most similar players to X".
-- Minutes threshold already enforced in ETL (`MIN_MINUTES`) to avoid small-sample noise.
-- UMAP projection for a 2D "player map" (visualisation only — *not* used for similarity math).
-- API: `GET /players/{id}/similar`. Frontend: **radar charts** comparing two players.
+## Phase 1 — Similarity Engine ✅
+- Feature matrix from `player_season_stats` (per-90 features) — [ml/features.py](../src/footyvision/ml/features.py).
+- **Standardised per position group** (z-score) — a striker is never compared to a centre-back.
+- Cosine similarity → "most similar players to X" — [ml/similarity.py](../src/footyvision/ml/similarity.py).
+- Minutes threshold enforced (`MIN_MINUTES`) to avoid small-sample noise.
+- API: `GET /players/{id}/similar` and `GET /players/{id}/radar` (percentiles within group).
+- Frontend: interactive **radar** comparing two players — [frontend/radar_demo.html](../frontend/radar_demo.html).
+- *Still open:* UMAP 2D "player map" (visualisation only), Euclidean option, position-group weighting.
 
-## Phase 2 — LLM Scouting Reports
-- Local OpenAI-compatible client (LM Studio / Ollama) behind a thin `LLMClient` interface.
-- Feed structured stats + similar players → generate a scouting report (strengths, weaknesses,
-  tactical fit, development potential, risk).
-- The LLM only sees numbers we computed; it never invents stats.
-- API: `POST /players/{id}/report`.
+## Phase 2 — LLM Scouting Reports ✅
+- Local OpenAI-compatible client behind a thin `LLMClient` — [llm/client.py](../src/footyvision/llm/client.py).
+- Grounded context (radar percentiles + similar players + strengths/weaknesses) →
+  prompt that **forbids inventing stats** → report — [llm/scouting.py](../src/footyvision/llm/scouting.py).
+- API: `POST /players/{id}/report`, `GET /players/{id}/report/context` (grounding, no LLM),
+  `GET /llm/health`. Report button wired into the radar UI.
+- Needs a local LLM running (LM Studio / Ollama); returns HTTP 503 with guidance if it is not.
+- *Still open:* stream tokens, cache reports, let the user pick report language/length.
 
-## Phase 3 — Natural-Language Search (safe text-to-SQL)
-- LLM produces a **validated structured filter object** (Pydantic), not raw SQL.
-- We translate that object into a parameterised, read-only query → no injection risk.
-- Example: *"sub-23 wingers with > 0.25 xG per 90 in the Bundesliga"*.
-- API: `POST /search`.
+## Phase 3 — Natural-Language Search (safe text-to-SQL) ✅
+- LLM produces a **validated `PlayerQuery`** (Pydantic whitelist) — never raw SQL — so no
+  injection is possible: [search/query.py](../src/footyvision/search/query.py),
+  [search/nl.py](../src/footyvision/search/nl.py).
+- API: `POST /search` (natural language, via LLM) and `POST /search/structured` (direct
+  query, no LLM — powers testing and power users).
+- Validated live: *"La Liga forwards with xG/90 > 0.5"* → Ronaldo/Benzema/Suárez/Messi;
+  *"midfielders with progressive passes/90 > 7"* → Kroos/Modrić/Banega.
+- *Known gap:* no age/DOB in the dataset, so "under-23"-style filters can't be answered
+  (the prompt tells the LLM to ignore them).
 
 ## Phase 4 — Talent Score (ML)
 - Supervised model (XGBoost) over per-90 features (+ age when available) for an upside score.

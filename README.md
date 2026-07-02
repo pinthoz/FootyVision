@@ -19,8 +19,11 @@ interprets them** (scouting reports, comparisons, natural-language search).
   interactive radar UI ([frontend/radar_demo.html](frontend/radar_demo.html)).
 - **Phase 2 — LLM Scouting Reports ✅.** Reports grounded in computed stats (`POST /players/{id}/report`)
   via a local OpenAI-compatible LLM (LM Studio / Ollama); the model explains, it never invents numbers.
+- **Phase 3 — Natural-Language Search ✅.** Free-text queries become a validated Pydantic
+  `PlayerQuery` (never raw SQL) → parameterised, injection-safe search. `POST /search` (LLM)
+  and `POST /search/structured` (no LLM).
 
-See [docs/ROADMAP.md](docs/ROADMAP.md) for what comes next (NL search, talent score).
+See [docs/ROADMAP.md](docs/ROADMAP.md) for what comes next (talent score, value predictor).
 
 ## Architecture (target)
 

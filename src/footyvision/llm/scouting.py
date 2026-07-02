@@ -135,5 +135,6 @@ def generate_report(
         return None
     client = client or LLMClient()
     system, user = build_prompt(context)
-    report = client.chat(system, user)
+    # Generous budget: a 6-section report plus a reasoning model's hidden thinking.
+    report = client.chat(system, user, max_tokens=3000)
     return {"context": context, "report": report}

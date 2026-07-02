@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
-from footyvision.db.models import METRIC_COLUMNS, Player, PlayerSeasonStats
+from footyvision.db.models import METRIC_COLUMNS, Competition, Player, PlayerSeasonStats
 
 # The per-90 columns that describe playing style — the similarity feature space.
 PER90_FEATURES: tuple[str, ...] = tuple(f"{m}_per90" for m in METRIC_COLUMNS)
@@ -47,16 +47,21 @@ def load_feature_frame(
     A `position_group` column is added. Filters are optional so the caller can scope
     the comparison pool (e.g. to one competition/season).
     """
-    stmt = select(
-        PlayerSeasonStats.player_id,
-        Player.name.label("name"),
-        PlayerSeasonStats.competition_id,
-        PlayerSeasonStats.sb_season_id,
-        PlayerSeasonStats.primary_position,
-        PlayerSeasonStats.matches_played,
-        PlayerSeasonStats.minutes,
-        *[getattr(PlayerSeasonStats, f) for f in PER90_FEATURES],
-    ).join(Player, Player.id == PlayerSeasonStats.player_id)
+    stmt = (
+        select(
+            PlayerSeasonStats.player_id,
+            Player.name.label("name"),
+            PlayerSeasonStats.competition_id,
+            Competition.name.label("competition"),
+            PlayerSeasonStats.sb_season_id,
+            PlayerSeasonStats.primary_position,
+            PlayerSeasonStats.matches_played,
+            PlayerSeasonStats.minutes,
+            *[getattr(PlayerSeasonStats, f) for f in PER90_FEATURES],
+        )
+        .join(Player, Player.id == PlayerSeasonStats.player_id)
+        .join(Competition, Competition.id == PlayerSeasonStats.competition_id)
+    )
 
     if min_minutes is not None:
         stmt = stmt.where(PlayerSeasonStats.minutes >= min_minutes)
