@@ -117,5 +117,49 @@ def talent_report(
         console.print(mism)
 
 
+@app.command("value-report")
+def value_report(
+    min_minutes: int | None = typer.Option(None, "--min-minutes"),
+) -> None:
+    """Match Transfermarkt 2015/16 values to our players, train LightGBM, print metrics."""
+    from footyvision.etl.transfermarkt import read_laliga_values_2016
+    from footyvision.ml.features import PER90_FEATURES, load_feature_frame
+    from footyvision.ml.value import bargains, match_values, shap_importance, train_value_model
+
+    settings = get_settings()
+    mm = settings.min_minutes if min_minutes is None else min_minutes
+    console.print("[cyan]Loading Transfermarkt La Liga 2015/16 values...[/cyan]")
+    values = read_laliga_values_2016()
+    console.print(f"  {len(values)} La Liga players with market values.")
+
+    with SessionLocal() as session:
+        features = load_feature_frame(session, mm)
+    merged = match_values(features, values, keep_cols=("value_eur", "age"))
+    console.print(f"[green]Matched {len(merged)}/{len(features)} players to a value.[/green]")
+
+    vm = train_value_model(merged, feature_cols=[*PER90_FEATURES, "age"])
+    console.print(
+        f"[green]LightGBM value model — R²={vm.r2:.2f}, MAE=€{vm.mae_eur:,.0f}[/green] "
+        f"(train={vm.n_train}, test={vm.n_test})"
+    )
+
+    imp = Table(title="Top features by mean |SHAP| — what drives value")
+    imp.add_column("feature")
+    imp.add_column("mean |SHAP|", justify="right")
+    for row in shap_importance(vm, merged, top_n=10):
+        imp.add_row(row["feature"], f"{row['mean_abs_shap']:.3f}")
+    console.print(imp)
+
+    barg = Table(title="Bargains — performance implies more value than FIFA price")
+    for col in ["player", "pos", "FIFA value", "model value", "upside"]:
+        barg.add_column(col)
+    for r in bargains(vm, merged, top_n=10):
+        barg.add_row(
+            r["name"], r["position_group"], f"€{r['actual_value']:,.0f}",
+            f"€{r['predicted_value']:,.0f}", f"€{r['upside']:,.0f}",
+        )
+    console.print(barg)
+
+
 if __name__ == "__main__":
     app()

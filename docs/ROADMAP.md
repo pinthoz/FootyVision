@@ -58,12 +58,19 @@ returns per-90 stats.
 - API: `GET /players/{id}/score`, `GET /rankings`, `GET /talent/model-info`.
   CLI: `footyvision talent-report` (accuracy + SHAP + mismatches).
 
-## Phase 5 — Stretch goals
-- **Market Value Predictor** (LightGBM) — requires a value dataset (e.g. a static Kaggle
-  Transfermarkt export, not live scraping).
-- **Career Simulator** — probability of reaching a top-5 league / CL / national team.
-  Highest data risk (needs longitudinal labelled careers); treat as research, not a promise.
-- **RAG scouting assistant** — vector DB over reports/news for conversational Q&A.
+## Phase 5 — Market Value Predictor ✅ (built on real data; honest low signal)
+- **LightGBM** regression on log(value) + **age**, **SHAP** importance, fuzzy name matching,
+  and a "bargains" view: [ml/value.py](../src/footyvision/ml/value.py). Data from **Kaggle**
+  (davidcariboo/player-scores Transfermarkt values) via the API + [etl/transfermarkt.py](../src/footyvision/etl/transfermarkt.py).
+  CLI: `footyvision value-report`. (A SoFIFA loader also exists but SoFIFA scraping is too slow here.)
+- **Honest evaluation:** matched 245/411 players; held-out **R² ≈ 0.05, MAE ≈ €5M**. SHAP
+  correctly ranks **age** as the dominant driver — but one season of public per-90 stats + age
+  explains little market-value variance (value is driven by reputation, club, potential,
+  marketing, contract — none in our features). Cross-source entity resolution (StatsBomb full
+  Spanish names ↔ short Transfermarkt names) adds label noise. A working pipeline with a
+  truthful "this doesn't predict well" result — not an overfit vanity metric.
+- **Career Simulator** — infeasible: needs longitudinal labelled careers (not available free).
+- **RAG scouting assistant** — feasible next (local `nomic-embed-text` + LLM); not yet built.
 
 ---
 

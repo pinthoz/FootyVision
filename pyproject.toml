@@ -30,6 +30,11 @@ dependencies = [
     "scikit-learn>=1.5",
     "xgboost>=2.0",
     "shap>=0.45",
+    # Value predictor: LightGBM regression + fuzzy name matching to FIFA/market values
+    "lightgbm>=4.0",
+    "rapidfuzz>=3.0",
+    # SoFIFA / FBref market-value & extra-stats source
+    "soccerdata>=1.8",
 ]
 
 [project.optional-dependencies]

@@ -26,8 +26,12 @@ interprets them** (scouting reports, comparisons, natural-language search).
   Performance Score (`GET /players/{id}/score`, `GET /rankings`) plus an XGBoost position
   classifier (~85% held-out) with SHAP explainability, style profiles and role-mismatch
   detection (`footyvision talent-report`).
+- **Phase 5 — Market Value Predictor ✅.** LightGBM + age + SHAP trained on real Kaggle
+  Transfermarkt values (`footyvision value-report`). Honest result: held-out R² ≈ 0.05 —
+  SHAP flags **age** as the top driver, but public per-90 stats barely predict market value
+  (a truthful evaluation, not an inflated metric).
 
-See [docs/ROADMAP.md](docs/ROADMAP.md) for what comes next (value predictor, career simulator).
+See [docs/ROADMAP.md](docs/ROADMAP.md) for details.
 
 ## Architecture (target)
 
