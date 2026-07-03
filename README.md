@@ -1,116 +1,136 @@
-# FootyVision
+# FootyVision ⚽
 
-**AI football scouting platform.** Helps sporting directors, scouts and analysts answer
-questions like *"who are the best stylistic replacements for this player?"*, *"which young
-players have the highest upside?"* and *"is this signing good value?"*.
+**An AI football scouting platform.** It helps sporting directors, scouts and analysts answer
+questions like *"who are the best stylistic replacements for this player?"*, *"which players
+fit a role?"*, *"is this signing good value?"* and *"find me a ball-winning midfielder"*.
 
-The guiding principle: **traditional ML models make the predictions; the LLM explains and
-interprets them** (scouting reports, comparisons, natural-language search).
+**Guiding principle:** traditional ML models do the maths; the **LLM explains and interprets**
+(scouting reports, comparisons, natural-language search, a RAG assistant) — it never invents numbers.
+
+> Built end-to-end: StatsBomb event ETL → Postgres → similarity / scoring / value ML →
+> local LLM + embeddings → FastAPI + a web dashboard. Runs fully **locally** (no paid APIs).
 
 ---
 
-## Status
+## What it does
 
-- **Phase 0 — Foundations ✅.** Scaffold, Postgres schema, and an ETL that turns
-  [StatsBomb Open Data](https://github.com/statsbomb/open-data) event streams into per-player
-  season statistics (minutes, progressive passes/carries, defensive actions, per-90 rates).
-- **Phase 1 — Similarity Engine ✅.** z-score *within position group* + cosine similarity
-  (`/players/{id}/similar`), plus scouting-radar percentiles (`/players/{id}/radar`) and an
-  interactive radar UI ([frontend/radar_demo.html](frontend/radar_demo.html)).
-- **Phase 2 — LLM Scouting Reports ✅.** Reports grounded in computed stats (`POST /players/{id}/report`)
-  via a local OpenAI-compatible LLM (LM Studio / Ollama); the model explains, it never invents numbers.
-- **Phase 3 — Natural-Language Search ✅.** Free-text queries become a validated Pydantic
-  `PlayerQuery` (never raw SQL) → parameterised, injection-safe search. `POST /search` (LLM)
-  and `POST /search/structured` (no LLM).
-- **Phase 4 — Performance Score + XGBoost/SHAP ✅.** A transparent position-weighted
-  Performance Score (`GET /players/{id}/score`, `GET /rankings`) plus an XGBoost position
-  classifier (~85% held-out) with SHAP explainability, style profiles and role-mismatch
-  detection (`footyvision talent-report`).
-- **Phase 5 — Market Value Predictor ✅.** LightGBM + age + SHAP trained on real Kaggle
-  Transfermarkt values (`footyvision value-report`). Honest result: held-out R² ≈ 0.05 —
-  SHAP flags **age** as the top driver, but public per-90 stats barely predict market value
-  (a truthful evaluation, not an inflated metric).
+| Capability | How it works | Try it |
+|---|---|---|
+| **Similarity engine** | Per-90 features, z-scored **within position group**, cosine similarity | `GET /players/{id}/similar` |
+| **Scouting radars** | Percentile-vs-peers on each metric | `GET /players/{id}/radar` |
+| **Performance Score** | Transparent position-weighted percentile composite (0–100) | `GET /players/{id}/score`, `GET /rankings` |
+| **Role classifier** | XGBoost predicts position from style (~85%), **SHAP** explains, flags role-mismatches | `footyvision talent-report` |
+| **LLM scouting reports** | Report grounded in computed stats; the model can't invent numbers | `POST /players/{id}/report` |
+| **Natural-language search** | LLM → validated Pydantic `PlayerQuery` (never raw SQL) → safe query | `POST /search` |
+| **Market value model** | LightGBM + age + SHAP on real Transfermarkt values | `footyvision value-report` |
+| **RAG assistant** | Player profiles embedded locally → retrieve + grounded answer, cites names | `POST /assistant` |
 
-See [docs/ROADMAP.md](docs/ROADMAP.md) for details.
+**Example** — *"La Liga forwards with xG per 90 over 0.5"* → Ronaldo, Benzema, Suárez, Messi.
+*"médio defensivo que ganhe bolas e intercete"* → retrieves Busquets/Camacho and recommends
+Camacho, citing his real intercepting/tackling profile.
 
-## Architecture (target)
+## Architecture
 
 ```
 StatsBomb Open Data ──► ETL (extract ▸ aggregate ▸ load) ──► PostgreSQL
-                                                                  │
-                 ┌────────────────────────────────────────────────┼───────────────┐
-                 ▼                         ▼                        ▼
-         Similarity Engine          Talent Score (XGBoost)   Value Predictor
-         (z-score + cosine)         + SHAP explainability    (later phase)
-                 └───────────────┬──────────────────────────────────┘
-                                 ▼
-                     LLM layer (local, LM Studio/Ollama)
-                  reports ▸ comparisons ▸ NL → safe SQL search
-                                 ▼
-                       Next.js scout dashboard
+                                                                 │
+        ┌──────────────┬──────────────────┬─────────────────────┼──────────────────┐
+        ▼              ▼                  ▼                      ▼                  ▼
+  Similarity     Performance Score   XGBoost role clf      Value predictor    RAG vector
+  (z + cosine)   (weighted pctl)     + SHAP                (LightGBM + SHAP)   store (embeds)
+        └──────────────┴────────┬─────────┴──────────────────────┴──────────────────┘
+                                ▼
+                 Local LLM  (LM Studio / Ollama — chat + embeddings)
+              reports ▸ NL → safe query ▸ conversational RAG assistant
+                                ▼
+                    FastAPI  ──►  web dashboard (radar / search / assistant)
 ```
 
 ## Tech stack
 
 - **Backend:** FastAPI · SQLAlchemy 2 · Alembic · PostgreSQL
-- **Data/ML:** pandas · scikit-learn · XGBoost · SHAP · UMAP (visualisation only)
-- **LLM:** local OpenAI-compatible endpoint (LM Studio / Ollama — Qwen/Gemma/Llama)
-- **Frontend (later):** Next.js · Plotly/Recharts
+- **Data/ML:** pandas · scikit-learn · **XGBoost** · **LightGBM** · **SHAP** · rapidfuzz
+- **LLM (local):** OpenAI-compatible endpoint — chat (Gemma/Qwen/Llama) + embeddings (`nomic-embed-text`)
+- **Data sources:** StatsBomb Open Data (`statsbombpy`) · Transfermarkt values (Kaggle) · FBref/SoFIFA (`soccerdata`)
+- **Frontend:** self-contained radar demo (`frontend/radar_demo.html`, Plotly) · Next.js dashboard (`frontend/web`)
 - **Infra:** Docker Compose
 
 ## Quick start
 
-Prerequisites: Docker (for Postgres) and Python 3.11+.
+Prerequisites: Docker (Postgres), Python 3.11+, and a local LLM server (LM Studio or Ollama)
+for the LLM/RAG features.
 
 ```bash
-# 1. Configure environment
-cp .env.example .env
-
-# 2. Start Postgres
+# 1. Postgres
 docker compose up -d db
 
-# 3. Install the package (editable) in a virtualenv
+# 2. Python env + package
 python -m venv .venv
-. .venv/Scripts/activate        # Windows PowerShell: .venv\Scripts\Activate.ps1
+.venv\Scripts\Activate.ps1            # Windows;  macOS/Linux: source .venv/bin/activate
 pip install -e ".[dev]"
 
-# 4. Create the schema
+# 3. Schema + data (StatsBomb Open Data)
 footyvision init-db
+footyvision competitions              # list available competitions
+footyvision load -c 11 -s 27          # La Liga 2015/16 (the one full season; ~380 matches)
 
-# 5. See what data is available, then load a season
-footyvision competitions
-footyvision load --competition 43 --season 3 --limit 5   # FIFA World Cup 2018, first 5 matches
-
-# 6. Run the API
-uvicorn footyvision.api.main:app --reload
-# -> http://localhost:8000/docs
+# 4. API
+uvicorn footyvision.api.main:app --reload    # -> http://localhost:8000/docs
 ```
 
-Run the full stack (API + DB) with `docker compose up --build`.
+**LLM features** (reports, NL search, assistant): start LM Studio, load a chat model + the
+`nomic-embed-text` embedding model, Start Server (port 1234), set `LLM_MODEL` in `.env`, then:
+
+```bash
+footyvision index                     # embed player profiles into the RAG vector store
+```
+
+**Value model** (optional): needs Kaggle access to `davidcariboo/player-scores`; drop
+`players.csv` + `player_valuations.csv` into `data/`, then `footyvision value-report`.
+
+**Full stack in Docker:** `docker compose up --build` (the API reaches the host LLM via
+`host.docker.internal`). The web dashboard lives in `frontend/web` (`npm install && npm run dev`).
+
+## API reference
+
+`/health` · `/llm/health` · `/players` · `/players/{id}` · `/players/{id}/seasons` ·
+`/players/{id}/similar` · `/players/{id}/radar` · `/players/{id}/score` · `/rankings` ·
+`/talent/model-info` · `POST /players/{id}/report` · `/players/{id}/report/context` ·
+`POST /search` · `POST /search/structured` · `POST /assistant`. Full docs at `/docs`.
 
 ## Project layout
 
 ```
 src/footyvision/
-  config.py            # env-driven settings
-  db/         base.py  # engine/session/Base
-              models.py
-  etl/        statsbomb.py   # extract (statsbombpy)
-              aggregate.py   # events -> per-player-match stats (+ minutes, progressive)
-              load.py        # upsert to DB + season aggregates
-  api/        main.py, routers/, schemas.py
-  cli.py               # init-db / competitions / load / aggregate
-tests/                 # unit tests (no DB/network needed)
+  config.py                 # env-driven settings
+  db/       base.py, models.py
+  etl/      statsbomb.py, aggregate.py, load.py, transfermarkt.py, sofifa.py
+  ml/       features.py, similarity.py, scoring.py, talent.py, value.py
+  llm/      client.py (chat + embeddings), scouting.py
+  search/   query.py (safe PlayerQuery), nl.py (NL → query)
+  rag/      profiles.py, store.py, assistant.py, service.py
+  api/      main.py, routers/, schemas.py
+  cli.py    # init-db · load · aggregate · talent-report · value-report · index
+frontend/   radar_demo.html · web/ (Next.js)
+tests/      # 31 unit tests, DB/network/LLM-free
 ```
+
+## Engineering notes (honest data reality)
+
+This project deliberately reports what public/free data **can't** do, not just what it can:
+
+- **StatsBomb Open Data** has no Portuguese league and only **one** complete domestic season
+  (La Liga 2015/16) — so the pool is that season + partial Bundesliga.
+- **FBref** only exposes advanced stats (xG, progression) for the Big-5 leagues, so a rich
+  Primeira Liga engine isn't feasible from free sources.
+- The **value model** is trained on real Transfermarkt values but scores a low held-out
+  R² (≈0.05): one season of public per-90 stats + age barely predicts market value (SHAP
+  correctly ranks age #1). Cross-source name matching (Spanish multi-surnames ↔ short TM
+  names) adds label noise. A truthful evaluation beats an inflated one.
 
 ## Tests
 
 ```bash
-pytest
+pytest          # 31 tests, no DB/network/LLM required
+ruff check src tests
 ```
-
-## Notes on data
-
-Only StatsBomb Open Data is used (free, openly licensed, no scraping). Coverage is limited
-to the competitions in that dataset. Market values (Transfermarkt) are intentionally out of
-scope for now — see the roadmap.

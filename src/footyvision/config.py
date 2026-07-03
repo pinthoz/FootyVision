@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     # --- LLM (local, OpenAI-compatible endpoint) ---
     llm_base_url: str = "http://localhost:1234/v1"
     llm_model: str = "qwen2.5-7b-instruct"
+    llm_embed_model: str = "text-embedding-nomic-embed-text-v1.5"
     llm_api_key: str = "not-needed-for-local"
 
     @property

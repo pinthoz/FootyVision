@@ -133,3 +133,19 @@ class ModelInfoResponse(BaseModel):
     test_accuracy: float
     n_train: int
     n_test: int
+
+
+class AssistantRequest(BaseModel):
+    question: str
+    k: int = 6
+
+
+class AssistantSource(BaseModel):
+    player_id: int
+    name: str
+    score: float
+
+
+class AssistantResponse(BaseModel):
+    answer: str
+    sources: list[AssistantSource]

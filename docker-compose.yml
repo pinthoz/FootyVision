@@ -29,9 +29,30 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-footy}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-footy}
       POSTGRES_DB: ${POSTGRES_DB:-footyvision}
+      # Reach the LLM/embedding server running on the host (LM Studio / Ollama).
+      LLM_BASE_URL: ${LLM_BASE_URL:-http://host.docker.internal:1234/v1}
+    extra_hosts:
+      # Lets the container resolve the host on Linux (Docker Desktop adds it automatically).
+      - "host.docker.internal:host-gateway"
+    volumes:
+      # Share data (Transfermarkt CSVs, RAG vector store) between host and container.
+      - ./data:/app/data
     ports:
       - "8000:8000"
-    command: uvicorn footyvision.api.main:app --host 0.0.0.0 --port 8000
+    # The Dockerfile CMD runs `footyvision init-db` before uvicorn.
+
+  web:
+    build:
+      context: ./frontend/web
+      args:
+        # Baked into the client bundle; the browser reaches the host-published API.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    container_name: footyvision-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "3000:3000"
 
 volumes:
   pgdata:

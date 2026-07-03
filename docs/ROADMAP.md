@@ -70,7 +70,18 @@ returns per-90 stats.
   Spanish names ↔ short Transfermarkt names) adds label noise. A working pipeline with a
   truthful "this doesn't predict well" result — not an overfit vanity metric.
 - **Career Simulator** — infeasible: needs longitudinal labelled careers (not available free).
-- **RAG scouting assistant** — feasible next (local `nomic-embed-text` + LLM); not yet built.
+
+## Phase 5b — RAG Scouting Assistant ✅
+- Player profiles embedded with the local **`nomic-embed-text`** model into a numpy vector
+  store ([rag/store.py](../src/footyvision/rag/store.py), [rag/profiles.py](../src/footyvision/rag/profiles.py));
+  a question is embedded, the nearest profiles retrieved, and the LLM answers **grounded in
+  them** (cites names, no invention): [rag/assistant.py](../src/footyvision/rag/assistant.py).
+- API: `POST /assistant`. CLI: `footyvision index` (build/persist the vector store).
+- Validated: *"médio defensivo que ganhe bolas e intercete"* → retrieves Busquets/Camacho/
+  Celso Borges and recommends Camacho with his real intercepting/tackling traits.
+- Honest note: the small local embedding model gives good retrieval for some queries
+  (defensive, dribbling) and noisier results for others (creative, finishing) — a real
+  limitation of embedding short structured profiles with a compact model.
 
 ---
 

@@ -95,6 +95,16 @@
            line-height:1.55; font-size:13.5px;">Pick Player A, then generate a grounded
         scouting report (needs a local LLM running — LM Studio / Ollama).</div>
     </div>
+
+    <div class="panel" style="margin-top:16px;">
+      <label for="askq">Scouting assistant (RAG)</label>
+      <input id="askq" type="text" placeholder="e.g. médio defensivo que ganhe bolas e intercete"
+             onkeydown="if(event.key==='Enter') askAssistant()" />
+      <div id="answer" class="muted" style="margin-top:12px; white-space:pre-wrap;
+           line-height:1.55; font-size:13.5px;">Ask a question — it retrieves relevant players
+        and answers grounded in them (needs the local LLM + embedding model).</div>
+      <div id="answerSources" class="muted" style="margin-top:8px; font-size:12px;"></div>
+    </div>
   </div>
 </div>
 
@@ -150,8 +160,6 @@ async function loadScore(id) {
       + `(${Math.round(style[1] * 100)}%)</span>`;
   } catch { $("scoreA").textContent = ""; }
 }
-
-async function loadSimilar(id) {
 
 async function generateReport() {
   if (!slots.A) return;
@@ -244,6 +252,30 @@ async function nlSearch() {
          <span>${r.name}</span><span class="pos">${r.competition ?? ""}</span></div>`).join("");
   } catch (e) {
     $("nlInterpreted").textContent = "Request failed: " + e;
+  }
+}
+
+async function askAssistant() {
+  const q = $("askq").value.trim();
+  if (!q) return;
+  $("answer").textContent = "Retrieving players and thinking…";
+  $("answerSources").textContent = "";
+  try {
+    const res = await fetch(`${API}/assistant`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question: q, k: 6 }),
+    });
+    if (res.status === 503) {
+      $("answer").textContent = "⚠️ Needs the local LLM + embedding model running (LM Studio).";
+      return;
+    }
+    if (!res.ok) { $("answer").textContent = `Error ${res.status}.`; return; }
+    const data = await res.json();
+    $("answer").textContent = data.answer;
+    $("answer").style.color = "var(--text)";
+    $("answerSources").textContent = "Retrieved: " + data.sources.map(s => s.name).join(" · ");
+  } catch (e) {
+    $("answer").textContent = "Request failed: " + e;
   }
 }
 

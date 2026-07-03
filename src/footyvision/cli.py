@@ -161,5 +161,16 @@ def value_report(
     console.print(barg)
 
 
+@app.command("index")
+def index_cmd() -> None:
+    """Embed all player profiles and persist the RAG vector store (needs the LLM server)."""
+    from footyvision.rag.service import STORE_PATH, build_store
+
+    with SessionLocal() as session:
+        console.print("[cyan]Embedding player profiles via the local model...[/cyan]")
+        store = build_store(session)
+    console.print(f"[green]Indexed {len(store)} profiles -> {STORE_PATH}[/green]")
+
+
 if __name__ == "__main__":
     app()

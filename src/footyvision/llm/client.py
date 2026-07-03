@@ -25,6 +25,7 @@ class LLMClient:
         s = get_settings()
         self.base_url = (base_url or s.llm_base_url).rstrip("/")
         self.model = model or s.llm_model
+        self.embed_model = s.llm_embed_model
         self.api_key = api_key or s.llm_api_key
         self.timeout = timeout
 
@@ -75,3 +76,20 @@ class LLMClient:
             return resp.json()["choices"][0]["message"]["content"].strip()
         except (KeyError, IndexError, ValueError) as exc:
             raise LLMError(f"Unexpected LLM response shape: {exc}") from exc
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        """Return an embedding vector for each input text (OpenAI /embeddings shape)."""
+        url = f"{self.base_url}/embeddings"
+        headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
+        try:
+            resp = httpx.post(
+                url, json={"model": self.embed_model, "input": texts},
+                headers=headers, timeout=self.timeout,
+            )
+            resp.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise LLMError(f"Embedding request to {url} failed ({exc}).") from exc
+        try:
+            return [item["embedding"] for item in resp.json()["data"]]
+        except (KeyError, TypeError) as exc:
+            raise LLMError(f"Unexpected embeddings response shape: {exc}") from exc
