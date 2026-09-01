@@ -8,7 +8,7 @@ Guiding principle: **ML predicts, the LLM explains.**
 
 ---
 
-## Phase 0 — Foundations ✅ (in progress)
+## Phase 0 — Foundations ✅
 - Repo scaffold, `pyproject`, Docker Compose, ruff/pytest.
 - Postgres schema (competitions, seasons, teams, players, matches, per-match & per-season stats).
 - ETL: StatsBomb Open Data → per-player-per-match aggregation (minutes, progressive passes/carries,
@@ -85,7 +85,36 @@ returns per-90 stats.
 
 ---
 
+## What's next
+
+Phases 0–5b are shipped. These are the open threads, roughly in the order they'd add the
+most value:
+
+**Product**
+- **Age/DOB in the dataset** — the single biggest unlock. Without it, "under-23" filters
+  are impossible (Phase 3) and the value model is missing its strongest feature at
+  inference time (Phase 5).
+- **Stream report tokens** and cache generated reports; let the user pick language/length.
+- **UMAP 2D "player map"** — the Phase 1 stretch goal, visualisation only.
+- **Compare view in the dashboard** — two radars side by side, driven by the similarity
+  endpoint rather than the standalone demo page.
+
+**Data**
+- **A second full season** to compare like-for-like across years; StatsBomb Open Data has
+  only La Liga 2015/16 complete, so this needs a different source.
+- **Better entity resolution** for the Transfermarkt join (245/411 matched today) — the
+  label noise is a real part of the Phase 5 R².
+- **A larger embedding model** for the RAG store: retrieval is good for defensive and
+  dribbling queries, noisier for creative/finishing ones.
+
+**Engineering**
+- **Alembic migrations** — the scaffolding exists and an initial revision is checked in;
+  `init-db` still uses `create_all` for a fast first run.
+- **Auth and rate limiting** before this is ever exposed beyond localhost (see
+  [SECURITY.md](../SECURITY.md)).
+- **Coverage of the ETL path** — the aggregation maths is unit-tested, the StatsBomb
+  extraction is not (it needs network fixtures).
+
 ## Cross-cutting quality (do throughout)
-- Alembic migrations once the schema stabilises (currently `init-db` uses `create_all`).
 - Tests for each new computation; keep aggregation logic DB/network-free and unit-tested.
 - Document every heuristic (e.g. what "progressive" means) so results are explainable.

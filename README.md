@@ -138,7 +138,7 @@ src/footyvision/       # the Python package
 frontend/              # radar_demo.html · web/ (Next.js dashboard)
 migrations/            # Alembic
 scripts/               # start.ps1 — one-command local stack
-tests/                 # 31 unit tests, DB/network/LLM-free
+tests/                 # 52 tests (unit + API), DB/network/LLM-free
 docs/                  # ARCHITECTURE.md, ROADMAP.md
 ```
 
@@ -158,7 +158,7 @@ This project deliberately reports what public/free data **can't** do, not just w
 ## Development
 
 ```bash
-pytest                             # 31 tests, no DB/network/LLM required
+pytest                             # 52 tests, no Postgres/network/LLM required
 ruff check src tests
 ruff format --check src tests
 ```

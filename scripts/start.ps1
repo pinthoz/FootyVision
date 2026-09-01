@@ -4,11 +4,12 @@
   the FastAPI backend, and the Next.js dashboard. Then opens the dashboard in a browser.
 
 .USAGE
-  From the project root:  .\start.ps1
+  From the project root:  .\scripts\start.ps1
   (If script execution is blocked, run once: Set-ExecutionPolicy -Scope Process Bypass)
 #>
 
-$root = $PSScriptRoot
+# The script lives in scripts/, so the project root is one level up.
+$root = Split-Path $PSScriptRoot -Parent
 $lms = "$env:USERPROFILE\.lmstudio\bin\lms.exe"
 $chatModel = "google/gemma-4-e4b"
 $embedModel = "text-embedding-nomic-embed-text-v1.5"
