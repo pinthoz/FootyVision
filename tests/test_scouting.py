@@ -1,4 +1,5 @@
 """Unit tests for report grounding — no DB and no live LLM required."""
+
 from __future__ import annotations
 
 import pandas as pd
@@ -9,8 +10,12 @@ from footyvision.llm.scouting import assemble_context, build_prompt, generate_re
 
 def _target() -> pd.Series:
     return pd.Series(
-        {"name": "Test Player", "primary_position": "Center Forward",
-         "minutes": 2400, "matches_played": 30}
+        {
+            "name": "Test Player",
+            "primary_position": "Center Forward",
+            "minutes": 2400,
+            "matches_played": 30,
+        }
     )
 
 
@@ -25,9 +30,12 @@ def _metrics() -> dict[str, dict[str, float]]:
 
 def test_assemble_context_orders_strengths_and_weaknesses():
     ctx = assemble_context(
-        _target(), "FWD", _metrics(),
+        _target(),
+        "FWD",
+        _metrics(),
         similar=[{"name": "Peer", "similarity": 0.9}],
-        n_strengths=2, n_weaknesses=2,
+        n_strengths=2,
+        n_weaknesses=2,
     )
     assert ctx["name"] == "Test Player"
     assert ctx["position_group"] == "FWD"

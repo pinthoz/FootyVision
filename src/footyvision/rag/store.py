@@ -4,6 +4,7 @@ For ~400 players a numpy matrix is more than enough — no external vector DB ne
 are persisted to a .npz so the API doesn't re-embed on every start. pgvector/FAISS would be
 the swap-in at much larger scale.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -45,7 +46,9 @@ class VectorStore:
         for i in range(0, len(texts), batch_size):
             vectors.extend(client.embed(texts[i : i + batch_size]))
         return cls(
-            [d["player_id"] for d in docs], [d["name"] for d in docs], texts,
+            [d["player_id"] for d in docs],
+            [d["name"] for d in docs],
+            texts,
             np.asarray(vectors, dtype=np.float32),
         )
 

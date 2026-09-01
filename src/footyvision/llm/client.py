@@ -3,6 +3,7 @@
 Kept provider-agnostic on purpose: any server that speaks the OpenAI
 `/v1/chat/completions` shape works by pointing LLM_BASE_URL at it.
 """
+
 from __future__ import annotations
 
 import httpx
@@ -83,8 +84,10 @@ class LLMClient:
         headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
         try:
             resp = httpx.post(
-                url, json={"model": self.embed_model, "input": texts},
-                headers=headers, timeout=self.timeout,
+                url,
+                json={"model": self.embed_model, "input": texts},
+                headers=headers,
+                timeout=self.timeout,
             )
             resp.raise_for_status()
         except httpx.HTTPError as exc:

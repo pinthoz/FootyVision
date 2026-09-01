@@ -1,4 +1,5 @@
 """Pydantic response models for the API."""
+
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict

@@ -14,9 +14,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY pyproject.toml README.md ./
 COPY src ./src
 
-# --trusted-host survives TLS-intercepting corporate proxies (see docs/ROADMAP note).
+# Escape hatch for TLS-intercepting corporate proxies. Empty by default (certificates are
+# verified); build with --build-arg PIP_TRUSTED_HOSTS="pypi.org files.pythonhosted.org"
+# only if your network requires it.
+ARG PIP_TRUSTED_HOSTS=""
 RUN pip install --upgrade pip \
-    && pip install -e . --trusted-host pypi.org --trusted-host files.pythonhosted.org
+    && if [ -n "$PIP_TRUSTED_HOSTS" ]; then \
+           pip install -e . $(printf -- '--trusted-host %s ' $PIP_TRUSTED_HOSTS); \
+       else \
+           pip install -e .; \
+       fi
+
+# Run the API as an unprivileged user.
+RUN useradd --create-home --uid 1000 footy && chown -R footy:footy /app
+USER footy
 
 EXPOSE 8000
 

@@ -3,6 +3,7 @@
 IDs that originate from StatsBomb (competition_id, season_id, team_id, player_id,
 match_id) are reused as primary keys so the ETL is idempotent (upserts by natural key).
 """
+
 from __future__ import annotations
 
 from datetime import date

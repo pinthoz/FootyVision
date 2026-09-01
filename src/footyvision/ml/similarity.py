@@ -4,6 +4,7 @@ Pure functions over a feature DataFrame (see features.load_feature_frame) so the
 is unit-testable without a database. UMAP-style 2D projection is intentionally NOT used
 for the similarity computation — only (later) for visualisation.
 """
+
 from __future__ import annotations
 
 import numpy as np

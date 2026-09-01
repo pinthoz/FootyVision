@@ -4,6 +4,7 @@ The LLM (or a client) produces a `PlayerQuery`; Pydantic validation is the secur
 boundary — only whitelisted fields and operators are accepted, so no arbitrary SQL or
 attribute access is ever possible. Execution runs over the in-memory feature frame.
 """
+
 from __future__ import annotations
 
 from typing import Any, Literal

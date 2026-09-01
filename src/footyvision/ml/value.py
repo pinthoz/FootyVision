@@ -6,6 +6,7 @@ players by name. We train on log(value) (values are heavy-tailed), evaluate on a
 split, explain with SHAP, and surface "bargains" (players worth more than their value
 suggests, i.e. large positive residual in performance-implied value).
 """
+
 from __future__ import annotations
 
 import math
@@ -90,8 +91,13 @@ def train_value_model(
 
     x_tr, x_te, y_tr, y_te = train_test_split(x, y, test_size=0.25, random_state=seed)
     model = LGBMRegressor(
-        n_estimators=400, learning_rate=0.03, num_leaves=15,
-        subsample=0.9, colsample_bytree=0.9, random_state=seed, verbose=-1,
+        n_estimators=400,
+        learning_rate=0.03,
+        num_leaves=15,
+        subsample=0.9,
+        colsample_bytree=0.9,
+        random_state=seed,
+        verbose=-1,
     )
     model.fit(x_tr, y_tr)
 
@@ -116,13 +122,16 @@ def bargains(vm: ValueModel, merged: pd.DataFrame, top_n: int = 15) -> list[dict
     scored = scored.sort_values("value_residual")  # most negative = underpriced vs performance
     rows = []
     for _, r in scored.head(top_n).iterrows():
-        rows.append({
-            "player_id": int(r["player_id"]), "name": r["name"],
-            "position_group": r["position_group"],
-            "actual_value": float(r[vm.value_col]),
-            "predicted_value": float(r["predicted_value"]),
-            "upside": float(-r["value_residual"]),
-        })
+        rows.append(
+            {
+                "player_id": int(r["player_id"]),
+                "name": r["name"],
+                "position_group": r["position_group"],
+                "actual_value": float(r[vm.value_col]),
+                "predicted_value": float(r["predicted_value"]),
+                "upside": float(-r["value_residual"]),
+            }
+        )
     return rows
 
 

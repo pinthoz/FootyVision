@@ -4,6 +4,7 @@ Used as the training target for the value predictor. FIFA 16 (version 160001) al
 our StatsBomb La Liga 2015/16 features. SoFIFA scrapes per player, so the first run is slow
 but soccerdata caches every page (re-runs are instant and resumable).
 """
+
 from __future__ import annotations
 
 import warnings

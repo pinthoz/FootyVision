@@ -5,6 +5,7 @@ Two CSVs live in ./data (downloaded once via the Kaggle API):
   - players.csv           : names + dates of birth (for the age feature)
 This is the real training target for the value predictor.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

@@ -3,6 +3,7 @@
 Pipeline: feature frame -> radar percentiles + similar players -> a compact factual
 context -> a prompt that forbids inventing stats -> the local LLM writes the prose.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -49,8 +50,11 @@ def assemble_context(
 
     def fmt(items: list[tuple[str, dict[str, float]]]) -> list[dict[str, Any]]:
         return [
-            {"metric": READABLE.get(k, k), "value": round(v["value"], 2),
-             "percentile": v["percentile"]}
+            {
+                "metric": READABLE.get(k, k),
+                "value": round(v["value"], 2),
+                "percentile": v["percentile"],
+            }
             for k, v in items
         ]
 
@@ -82,8 +86,10 @@ def build_prompt(context: dict[str, Any]) -> tuple[str, str]:
             f"  - {i['metric']}: {i['value']} (percentil {i['percentile']})" for i in items
         )
 
-    sims = ", ".join(f"{s['name']} ({s['similarity']:.2f})" for s in context["similar_players"]) \
+    sims = (
+        ", ".join(f"{s['name']} ({s['similarity']:.2f})" for s in context["similar_players"])
         or "n/d"
+    )
 
     user = (
         f"Jogador: {context['name']}\n"

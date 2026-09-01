@@ -1,4 +1,5 @@
 """Unit tests for the Performance Score and the XGBoost position classifier."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -25,12 +26,20 @@ def _synthetic(n_per_class: int = 14, seed: int = 0) -> pd.DataFrame:
             feats = {f: 0.0 for f in PER90_FEATURES}
             for k, v in base.items():
                 feats[k] = max(0.0, v + rng.normal(0, 0.12 * v))
-            rows.append({
-                "player_id": pid, "name": f"P{pid}", "competition": "Test",
-                "competition_id": 1, "sb_season_id": 1, "primary_position": position,
-                "matches_played": 20, "minutes": 1800,
-                "position_group": position_group(position), **feats,
-            })
+            rows.append(
+                {
+                    "player_id": pid,
+                    "name": f"P{pid}",
+                    "competition": "Test",
+                    "competition_id": 1,
+                    "sb_season_id": 1,
+                    "primary_position": position,
+                    "matches_played": 20,
+                    "minutes": 1800,
+                    "position_group": position_group(position),
+                    **feats,
+                }
+            )
             pid += 1
     return pd.DataFrame(rows)
 

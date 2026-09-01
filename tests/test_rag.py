@@ -1,4 +1,5 @@
 """Unit tests for the RAG assistant — synthetic data, no DB or live LLM."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -18,11 +19,18 @@ def _frame() -> pd.DataFrame:
         for _ in range(3):
             feats = {f: 0.0 for f in PER90_FEATURES}
             feats.update(base)
-            rows.append({
-                "player_id": pid, "name": f"Player {pid}", "competition": "La Liga",
-                "primary_position": position, "position_group": position_group(position),
-                "minutes": 1800, "matches_played": 20, **feats,
-            })
+            rows.append(
+                {
+                    "player_id": pid,
+                    "name": f"Player {pid}",
+                    "competition": "La Liga",
+                    "primary_position": position,
+                    "position_group": position_group(position),
+                    "minutes": 1800,
+                    "matches_played": 20,
+                    **feats,
+                }
+            )
             pid += 1
     return pd.DataFrame(rows)
 
@@ -60,8 +68,9 @@ def test_vector_store_build_and_search():
 
 def test_assistant_answer_grounds_and_cites():
     vectors = np.array([[1.0, 0.0], [0.0, 1.0]], dtype=np.float32)
-    store = VectorStore([1, 2], ["Striker", "Defender"],
-                        ["a lethal forward", "a solid centre back"], vectors)
+    store = VectorStore(
+        [1, 2], ["Striker", "Defender"], ["a lethal forward", "a solid centre back"], vectors
+    )
     result = ScoutAssistant(store, client=_FakeClient()).answer("who is a good forward?", k=1)
     assert "Resposta" in result["answer"]
     assert result["sources"][0]["name"] == "Striker"

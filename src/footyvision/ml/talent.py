@@ -5,6 +5,7 @@ explainability (SHAP) stack honestly (no fabricated target) and yields two usefu
 a per-player *style profile* (how FWD/MID/DEF-like they play) and *role mismatches*
 (players whose stats look like a different position than they're listed in).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -50,9 +51,14 @@ def train_position_classifier(
     )
 
     model = XGBClassifier(
-        n_estimators=300, max_depth=4, learning_rate=0.08,
-        subsample=0.9, colsample_bytree=0.9, eval_metric="mlogloss",
-        num_class=len(classes), random_state=seed,
+        n_estimators=300,
+        max_depth=4,
+        learning_rate=0.08,
+        subsample=0.9,
+        colsample_bytree=0.9,
+        eval_metric="mlogloss",
+        num_class=len(classes),
+        random_state=seed,
     )
     model.fit(x_tr, y_tr)
     acc = float(accuracy_score(y_te, model.predict(x_te)))
@@ -95,10 +101,15 @@ def role_mismatches(
         pred = tm.classes[pred_idx[row_pos]]
         conf = float(proba[row_pos, pred_idx[row_pos]])
         if pred != r["position_group"] and conf >= min_prob:
-            out.append({
-                "player_id": int(r["player_id"]), "name": r["name"],
-                "listed": r["position_group"], "plays_like": pred, "confidence": round(conf, 3),
-            })
+            out.append(
+                {
+                    "player_id": int(r["player_id"]),
+                    "name": r["name"],
+                    "listed": r["position_group"],
+                    "plays_like": pred,
+                    "confidence": round(conf, 3),
+                }
+            )
     out.sort(key=lambda m: m["confidence"], reverse=True)
     return out[:top_n]
 

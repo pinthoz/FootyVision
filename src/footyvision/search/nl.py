@@ -3,6 +3,7 @@
 The LLM only ever emits JSON for the PlayerQuery schema; Pydantic validation rejects
 anything outside the whitelist. No SQL is ever produced by the model.
 """
+
 from __future__ import annotations
 
 import json

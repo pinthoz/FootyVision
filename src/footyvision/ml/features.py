@@ -4,6 +4,7 @@ The comparable features are the per-90 rates (not raw totals), because players d
 in minutes played. Standardisation and similarity are always done *within a position
 group* — comparing a goalkeeper's progressive passes to a winger's is meaningless.
 """
+
 from __future__ import annotations
 
 import pandas as pd

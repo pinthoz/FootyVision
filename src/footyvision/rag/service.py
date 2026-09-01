@@ -1,4 +1,5 @@
 """Lazily build/load and cache the player vector store for the assistant."""
+
 from __future__ import annotations
 
 from pathlib import Path

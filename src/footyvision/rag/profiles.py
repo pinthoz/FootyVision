@@ -5,6 +5,7 @@ embedding model (nomic-embed-text) discriminates far better on descriptive langu
 resembles how scouts phrase queries. English on purpose (nomic is English-first); the
 assistant's final answer can still be Portuguese.
 """
+
 from __future__ import annotations
 
 from typing import Any

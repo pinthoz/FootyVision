@@ -4,6 +4,7 @@ Not a predictive "potential" model (we have no future/age/value labels). It is a
 explainable composite of a player's percentiles *within their position group*, weighted
 by what matters for the role. Every point is traceable to a metric contribution.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -16,25 +17,43 @@ from footyvision.ml.similarity import _target_index
 # is judged on — a striker on finishing/creation, a defender on stopping play + build-up.
 ROLE_WEIGHTS: dict[str, dict[str, float]] = {
     "FWD": {
-        "xg_per90": 0.22, "goals_per90": 0.18, "shots_per90": 0.10, "assists_per90": 0.12,
-        "dribbles_completed_per90": 0.10, "progressive_carries_per90": 0.10,
-        "progressive_passes_per90": 0.08, "passes_completed_per90": 0.05,
+        "xg_per90": 0.22,
+        "goals_per90": 0.18,
+        "shots_per90": 0.10,
+        "assists_per90": 0.12,
+        "dribbles_completed_per90": 0.10,
+        "progressive_carries_per90": 0.10,
+        "progressive_passes_per90": 0.08,
+        "passes_completed_per90": 0.05,
         "ball_recoveries_per90": 0.05,
     },
     "MID": {
-        "progressive_passes_per90": 0.18, "passes_completed_per90": 0.12, "assists_per90": 0.10,
-        "xg_per90": 0.08, "progressive_carries_per90": 0.10, "dribbles_completed_per90": 0.08,
-        "ball_recoveries_per90": 0.12, "tackles_per90": 0.10, "interceptions_per90": 0.12,
+        "progressive_passes_per90": 0.18,
+        "passes_completed_per90": 0.12,
+        "assists_per90": 0.10,
+        "xg_per90": 0.08,
+        "progressive_carries_per90": 0.10,
+        "dribbles_completed_per90": 0.08,
+        "ball_recoveries_per90": 0.12,
+        "tackles_per90": 0.10,
+        "interceptions_per90": 0.12,
     },
     "DEF": {
-        "tackles_per90": 0.16, "interceptions_per90": 0.16, "clearances_per90": 0.14,
-        "blocks_per90": 0.10, "ball_recoveries_per90": 0.14, "progressive_passes_per90": 0.14,
-        "passes_completed_per90": 0.10, "progressive_carries_per90": 0.06,
+        "tackles_per90": 0.16,
+        "interceptions_per90": 0.16,
+        "clearances_per90": 0.14,
+        "blocks_per90": 0.10,
+        "ball_recoveries_per90": 0.14,
+        "progressive_passes_per90": 0.14,
+        "passes_completed_per90": 0.10,
+        "progressive_carries_per90": 0.06,
     },
     # Outfield-oriented metrics only, so GK scores are weak/indicative — flagged in docs.
     "GK": {
-        "passes_completed_per90": 0.35, "progressive_passes_per90": 0.30,
-        "clearances_per90": 0.20, "ball_recoveries_per90": 0.15,
+        "passes_completed_per90": 0.35,
+        "progressive_passes_per90": 0.30,
+        "clearances_per90": 0.20,
+        "ball_recoveries_per90": 0.15,
     },
 }
 
@@ -71,8 +90,12 @@ def performance_score(frame: pd.DataFrame, player_id: int) -> dict[str, Any] | N
         contribution = weight * pct
         total += contribution
         breakdown.append(
-            {"metric": feat, "weight": weight, "percentile": round(pct, 1),
-             "contribution": round(contribution, 1)}
+            {
+                "metric": feat,
+                "weight": weight,
+                "percentile": round(pct, 1),
+                "contribution": round(contribution, 1),
+            }
         )
     breakdown.sort(key=lambda b: b["contribution"], reverse=True)
     return {

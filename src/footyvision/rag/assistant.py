@@ -1,4 +1,5 @@
 """RAG scouting assistant: retrieve relevant player profiles, then answer grounded in them."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -31,6 +32,7 @@ class ScoutAssistant:
         answer = self.client.chat(system, user, max_tokens=1400)
         return {
             "answer": answer,
-            "sources": [{"player_id": h.player_id, "name": h.name, "score": round(h.score, 3)}
-                        for h in hits],
+            "sources": [
+                {"player_id": h.player_id, "name": h.name, "score": round(h.score, 3)} for h in hits
+            ],
         }

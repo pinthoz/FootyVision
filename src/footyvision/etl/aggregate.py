@@ -4,6 +4,7 @@ The hard parts here are (1) estimating minutes played and (2) the "progressive"
 heuristics. Both are documented inline; they are deliberately simple and explainable
 rather than perfectly matching any vendor's proprietary definition.
 """
+
 from __future__ import annotations
 
 import math

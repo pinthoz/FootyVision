@@ -5,6 +5,17 @@ description = "AI football scouting platform — similarity, talent scoring and 
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "Ana Pinto" }]
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["football", "soccer", "scouting", "statsbomb", "machine-learning", "llm", "rag"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Framework :: FastAPI",
+]
 
 dependencies = [
     # API
@@ -48,11 +59,17 @@ dev = [
     "ruff>=0.5",
 ]
 
+[project.urls]
+Homepage = "https://github.com/pinthoz/FootyVision"
+Repository = "https://github.com/pinthoz/FootyVision"
+Issues = "https://github.com/pinthoz/FootyVision/issues"
+Architecture = "https://github.com/pinthoz/FootyVision/blob/main/docs/ARCHITECTURE.md"
+
 [project.scripts]
 footyvision = "footyvision.cli:app"
 
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
@@ -63,6 +80,9 @@ line-length = 100
 target-version = "py311"
 src = ["src", "tests"]
 
+[tool.ruff.format]
+docstring-code-format = true
+
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "W"]
 # B008 is the intended FastAPI idiom (Depends()/Query() in argument defaults).
@@ -71,3 +91,4 @@ ignore = ["B008"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+addopts = "-q"

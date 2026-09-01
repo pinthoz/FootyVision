@@ -18,7 +18,11 @@ services:
       retries: 10
 
   api:
-    build: .
+    build:
+      context: .
+      args:
+        # Set only behind a TLS-intercepting proxy, e.g. "pypi.org files.pythonhosted.org".
+        PIP_TRUSTED_HOSTS: ${PIP_TRUSTED_HOSTS:-}
     container_name: footyvision-api
     restart: unless-stopped
     depends_on:

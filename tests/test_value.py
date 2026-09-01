@@ -1,4 +1,5 @@
 """Unit tests for the market-value predictor — synthetic data, no scraping."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -18,14 +19,19 @@ def test_parse_value_eur():
 
 
 def test_match_values_fuzzy():
-    features = pd.DataFrame({
-        "player_id": [1, 2, 3], "name": ["Lionel Messi", "Luis Suárez", "Nobody Here"],
-        "position_group": ["FWD", "FWD", "MID"],
-    })
-    values = pd.DataFrame({
-        "name": ["Lionel Andrés Messi", "Luis Suarez", "Cristiano Ronaldo"],
-        "value_eur": [120_000_000.0, 80_000_000.0, 100_000_000.0],
-    })
+    features = pd.DataFrame(
+        {
+            "player_id": [1, 2, 3],
+            "name": ["Lionel Messi", "Luis Suárez", "Nobody Here"],
+            "position_group": ["FWD", "FWD", "MID"],
+        }
+    )
+    values = pd.DataFrame(
+        {
+            "name": ["Lionel Andrés Messi", "Luis Suarez", "Cristiano Ronaldo"],
+            "value_eur": [120_000_000.0, 80_000_000.0, 100_000_000.0],
+        }
+    )
     merged = match_values(features, values, score_cutoff=80)
     by_name = dict(zip(merged["name"], merged["value_eur"], strict=False))
     assert by_name["Lionel Messi"] == 120_000_000.0
@@ -41,10 +47,15 @@ def _merged(n: int = 60, seed: int = 0) -> pd.DataFrame:
         # Value driven mostly by xg + progressive passes, plus noise.
         value = 1e6 + 4e7 * feats["xg_per90"] + 2e7 * feats["progressive_passes_per90"]
         value *= 1 + rng.normal(0, 0.1)
-        rows.append({
-            "player_id": i, "name": f"P{i}", "position_group": "FWD",
-            "value_eur": max(1e5, value), **feats,
-        })
+        rows.append(
+            {
+                "player_id": i,
+                "name": f"P{i}",
+                "position_group": "FWD",
+                "value_eur": max(1e5, value),
+                **feats,
+            }
+        )
     return pd.DataFrame(rows)
 
 

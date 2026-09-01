@@ -1,4 +1,5 @@
 """Unit tests for event aggregation — no DB or network required."""
+
 from __future__ import annotations
 
 import pandas as pd

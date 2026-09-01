@@ -3,6 +3,7 @@
 No credentials are configured, so statsbombpy reads the free open-data repository.
 We silence its noisy "no credentials" warning here.
 """
+
 from __future__ import annotations
 
 import warnings

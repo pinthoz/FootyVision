@@ -52,10 +52,12 @@ export default function Radar({ axes, series }: { axes: string[]; series: RadarS
         );
       })}
       {/* series polygons */}
-      {series.map((s) => {
+      {series.map((s, si) => {
         const pts = s.values.map((v, i) => point(i, n, v).join(",")).join(" ");
         return (
-          <g key={s.name}>
+          // Keyed by slot index (0=A, 1=B), not name: picking the same player into both
+          // slots would otherwise produce two <g> elements with the same key.
+          <g key={si}>
             <polygon points={pts} fill={s.color} fillOpacity={0.18} stroke={s.color} strokeWidth={2} />
             {s.values.map((v, i) => {
               const [x, y] = point(i, n, v);

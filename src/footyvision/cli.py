@@ -7,6 +7,7 @@ Examples
     footyvision load --competition 43 --season 3 --limit 5
     footyvision aggregate --competition 43 --season 3
 """
+
 from __future__ import annotations
 
 import typer
@@ -53,6 +54,7 @@ def load_cmd(
     """Extract + aggregate + load a competition season into Postgres."""
     settings = get_settings()
     with SessionLocal() as session:
+
         def _progress(match_row, i, total):
             console.print(f"  [{i}/{total}] match {match_row['match_id']} loaded")
 
@@ -155,8 +157,11 @@ def value_report(
         barg.add_column(col)
     for r in bargains(vm, merged, top_n=10):
         barg.add_row(
-            r["name"], r["position_group"], f"€{r['actual_value']:,.0f}",
-            f"€{r['predicted_value']:,.0f}", f"€{r['upside']:,.0f}",
+            r["name"],
+            r["position_group"],
+            f"€{r['actual_value']:,.0f}",
+            f"€{r['predicted_value']:,.0f}",
+            f"€{r['upside']:,.0f}",
         )
     console.print(barg)
 

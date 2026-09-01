@@ -1,4 +1,5 @@
 """Unit tests for the similarity engine — synthetic frame, no DB required."""
+
 from __future__ import annotations
 
 import pandas as pd
@@ -41,14 +42,34 @@ def _row(pid: int, name: str, position: str, minutes: float, **feats) -> dict:
 def _frame() -> pd.DataFrame:
     return pd.DataFrame(
         [
-            _row(1, "Striker A", "Center Forward", 1000,
-                 goals_per90=0.8, xg_per90=0.7, shots_per90=3.0),
-            _row(2, "Striker B", "Center Forward", 1000,
-                 goals_per90=0.75, xg_per90=0.68, shots_per90=2.9),
-            _row(3, "Striker C", "Center Forward", 1000,
-                 goals_per90=0.05, xg_per90=0.05, tackles_per90=3.0),
-            _row(4, "Defender D", "Center Back", 1000,
-                 tackles_per90=3.0, clearances_per90=5.0),
+            _row(
+                1,
+                "Striker A",
+                "Center Forward",
+                1000,
+                goals_per90=0.8,
+                xg_per90=0.7,
+                shots_per90=3.0,
+            ),
+            _row(
+                2,
+                "Striker B",
+                "Center Forward",
+                1000,
+                goals_per90=0.75,
+                xg_per90=0.68,
+                shots_per90=2.9,
+            ),
+            _row(
+                3,
+                "Striker C",
+                "Center Forward",
+                1000,
+                goals_per90=0.05,
+                xg_per90=0.05,
+                tackles_per90=3.0,
+            ),
+            _row(4, "Defender D", "Center Back", 1000, tackles_per90=3.0, clearances_per90=5.0),
         ]
     )
 

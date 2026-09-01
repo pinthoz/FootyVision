@@ -1,4 +1,5 @@
 """Unit tests for structured/NL search — no DB or live LLM."""
+
 from __future__ import annotations
 
 import pandas as pd
@@ -30,9 +31,15 @@ def test_player_query_tolerates_llm_nulls():
 
 def _row(pid, name, comp, position, minutes, **feats) -> dict:
     d = {
-        "player_id": pid, "name": name, "competition": comp, "competition_id": 1,
-        "sb_season_id": 1, "primary_position": position, "matches_played": 20,
-        "minutes": minutes, "position_group": position_group(position),
+        "player_id": pid,
+        "name": name,
+        "competition": comp,
+        "competition_id": 1,
+        "sb_season_id": 1,
+        "primary_position": position,
+        "matches_played": 20,
+        "minutes": minutes,
+        "position_group": position_group(position),
     }
     d.update({f: 0.0 for f in PER90_FEATURES})
     d.update(feats)
@@ -40,11 +47,13 @@ def _row(pid, name, comp, position, minutes, **feats) -> dict:
 
 
 def _frame() -> pd.DataFrame:
-    return pd.DataFrame([
-        _row(1, "Winger A", "La Liga", "Right Wing", 2500, xg_per90=0.30, dribbles_per90=5.0),
-        _row(2, "Winger B", "La Liga", "Left Wing", 2500, xg_per90=0.20, dribbles_per90=6.0),
-        _row(3, "Striker C", "Bundesliga", "Center Forward", 2500, xg_per90=0.55),
-    ])
+    return pd.DataFrame(
+        [
+            _row(1, "Winger A", "La Liga", "Right Wing", 2500, xg_per90=0.30, dribbles_per90=5.0),
+            _row(2, "Winger B", "La Liga", "Left Wing", 2500, xg_per90=0.20, dribbles_per90=6.0),
+            _row(3, "Striker C", "Bundesliga", "Center Forward", 2500, xg_per90=0.55),
+        ]
+    )
 
 
 def test_execute_query_filters_group_competition_and_condition(monkeypatch):
@@ -76,8 +85,10 @@ class _FakeClient:
 
 
 def test_parse_nl_extracts_fenced_json():
-    payload = '```json\n{"position_group": "FWD", "conditions": ' \
-              '[{"field": "xg_per90", "op": "gt", "value": 0.25}], "limit": 10}\n```'
+    payload = (
+        '```json\n{"position_group": "FWD", "conditions": '
+        '[{"field": "xg_per90", "op": "gt", "value": 0.25}], "limit": 10}\n```'
+    )
     q = parse_nl("strikers with xg over 0.25", client=_FakeClient(payload))
     assert q.position_group == "FWD"
     assert q.conditions[0].field == "xg_per90"

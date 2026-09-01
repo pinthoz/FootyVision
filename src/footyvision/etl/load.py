@@ -3,6 +3,7 @@
 Idempotent: dimension rows are upserted by primary key; a match's player stats are
 deleted and re-inserted on reload so re-running never duplicates data.
 """
+
 from __future__ import annotations
 
 from datetime import date, datetime
