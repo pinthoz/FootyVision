@@ -34,7 +34,17 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-footy}
       POSTGRES_DB: ${POSTGRES_DB:-footyvision}
       # Reach the LLM/embedding server running on the host (LM Studio / Ollama).
-      LLM_BASE_URL: ${LLM_BASE_URL:-http://host.docker.internal:1234/v1}
+      # This deliberately does NOT read LLM_BASE_URL: that key is the host-side URL
+      # (localhost:1234) and inside a container localhost is the container itself.
+      # Override with LLM_BASE_URL_DOCKER if your LLM lives somewhere else.
+      LLM_BASE_URL: ${LLM_BASE_URL_DOCKER:-http://host.docker.internal:1234/v1}
+      # Model names, on the other hand, are the same on the host and in the container.
+      LLM_MODEL: ${LLM_MODEL:-qwen2.5-7b-instruct}
+      LLM_EMBED_MODEL: ${LLM_EMBED_MODEL:-text-embedding-embeddinggemma-300m-qat}
+      # Task prefixes must match the embedding model above.
+      LLM_EMBED_DOCUMENT_PREFIX: "${LLM_EMBED_DOCUMENT_PREFIX:-title: none | text: }"
+      LLM_EMBED_QUERY_PREFIX: "${LLM_EMBED_QUERY_PREFIX:-task: search result | query: }"
+      LLM_API_KEY: ${LLM_API_KEY:-not-needed-for-local}
     extra_hosts:
       # Lets the container resolve the host on Linux (Docker Desktop adds it automatically).
       - "host.docker.internal:host-gateway"

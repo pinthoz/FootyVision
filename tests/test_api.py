@@ -52,6 +52,21 @@ def test_list_players_filters_by_name_case_insensitively(client):
     assert {p["name"] for p in body} == {"Delta Anchor", "Echo Anchor"}
 
 
+def test_list_players_can_exclude_players_without_a_season_aggregate(client, db_session):
+    # A player who only ever appeared in a match has no radar and no score, so the
+    # dashboard must be able to keep them out of the search results.
+    from footyvision.db.models import Player
+
+    db_session.add(Player(id=99, name="Zulu Benchwarmer"))
+    db_session.commit()
+
+    everyone = {p["name"] for p in client.get("/players").json()}
+    selectable = {p["name"] for p in client.get("/players", params={"with_stats": True}).json()}
+    assert "Zulu Benchwarmer" in everyone
+    assert "Zulu Benchwarmer" not in selectable
+    assert len(selectable) == 6
+
+
 def test_list_players_rejects_out_of_range_limit(client):
     assert client.get("/players", params={"limit": 500}).status_code == 422
 

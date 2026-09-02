@@ -17,23 +17,23 @@ from footyvision.ml.similarity import find_similar, radar_percentiles
 
 # Human-readable metric labels for the report context.
 READABLE: dict[str, str] = {
-    "goals_per90": "golos/90",
-    "assists_per90": "assistências/90",
-    "shots_per90": "remates/90",
+    "goals_per90": "goals/90",
+    "assists_per90": "assists/90",
+    "shots_per90": "shots/90",
     "xg_per90": "xG/90",
     "passes_per90": "passes/90",
-    "passes_completed_per90": "passes completos/90",
-    "progressive_passes_per90": "passes progressivos/90",
-    "dribbles_per90": "dribles/90",
-    "dribbles_completed_per90": "dribles completos/90",
-    "carries_per90": "conduções/90",
-    "progressive_carries_per90": "conduções progressivas/90",
-    "tackles_per90": "desarmes/90",
-    "interceptions_per90": "interceções/90",
-    "blocks_per90": "bloqueios/90",
-    "clearances_per90": "alívios/90",
-    "ball_recoveries_per90": "recuperações/90",
-    "pressures_per90": "pressões/90",
+    "passes_completed_per90": "completed passes/90",
+    "progressive_passes_per90": "progressive passes/90",
+    "dribbles_per90": "dribbles/90",
+    "dribbles_completed_per90": "completed dribbles/90",
+    "carries_per90": "carries/90",
+    "progressive_carries_per90": "progressive carries/90",
+    "tackles_per90": "tackles/90",
+    "interceptions_per90": "interceptions/90",
+    "blocks_per90": "blocks/90",
+    "clearances_per90": "clearances/90",
+    "ball_recoveries_per90": "ball recoveries/90",
+    "pressures_per90": "pressures/90",
 }
 
 
@@ -73,32 +73,32 @@ def assemble_context(
 def build_prompt(context: dict[str, Any]) -> tuple[str, str]:
     """Return (system, user) messages. Percentiles are vs peers in the same position."""
     system = (
-        "És um scout de futebol profissional. Escreves relatórios de scouting concisos, "
-        "objetivos e em português de Portugal. Baseia-te EXCLUSIVAMENTE nos dados fornecidos "
-        "— não inventes números, clubes, idades nem estatísticas que não estejam no contexto. "
-        "Os percentis são relativos a jogadores da mesma posição. Estrutura o relatório com as "
-        "secções: Resumo, Pontos Fortes, Pontos Fracos, Enquadramento Tático, "
-        "Potencial de Desenvolvimento, Risco."
+        "You are a professional football scout. You write concise, objective scouting "
+        "reports in English. Base the report EXCLUSIVELY on the data provided — never "
+        "invent numbers, clubs, ages or statistics that are not in the context. "
+        "Percentiles are relative to players in the same position. Structure the report "
+        "with the sections: Summary, Strengths, Weaknesses, Tactical Fit, "
+        "Development Potential, Risk."
     )
 
     def lines(items: list[dict[str, Any]]) -> str:
         return "\n".join(
-            f"  - {i['metric']}: {i['value']} (percentil {i['percentile']})" for i in items
+            f"  - {i['metric']}: {i['value']} (percentile {i['percentile']})" for i in items
         )
 
     sims = (
         ", ".join(f"{s['name']} ({s['similarity']:.2f})" for s in context["similar_players"])
-        or "n/d"
+        or "n/a"
     )
 
     user = (
-        f"Jogador: {context['name']}\n"
-        f"Posição: {context['position']} (grupo {context['position_group']})\n"
-        f"Minutos: {context['minutes']} em {context['matches_played']} jogos\n\n"
-        f"Pontos fortes (percentis mais altos):\n{lines(context['strengths'])}\n\n"
-        f"Pontos fracos (percentis mais baixos):\n{lines(context['weaknesses'])}\n\n"
-        f"Jogadores mais semelhantes (similaridade cosseno): {sims}\n\n"
-        "Escreve o relatório de scouting."
+        f"Player: {context['name']}\n"
+        f"Position: {context['position']} (group {context['position_group']})\n"
+        f"Minutes: {context['minutes']} across {context['matches_played']} matches\n\n"
+        f"Strengths (highest percentiles):\n{lines(context['strengths'])}\n\n"
+        f"Weaknesses (lowest percentiles):\n{lines(context['weaknesses'])}\n\n"
+        f"Most similar players (cosine similarity): {sims}\n\n"
+        "Write the scouting report."
     )
     return system, user
 

@@ -7,6 +7,8 @@ the swap-in at much larger scale.
 
 from __future__ import annotations
 
+import re
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -21,6 +23,13 @@ class Hit:
     name: str
     text: str
     score: float
+
+
+def _name_tokens(text: str) -> list[str]:
+    """Lowercase, accent-stripped word tokens — so "Bakambu" matches "Cédric Bakambu"."""
+    folded = unicodedata.normalize("NFKD", text.lower())
+    folded = "".join(c for c in folded if not unicodedata.combining(c))
+    return re.findall(r"[a-z0-9]+", folded)
 
 
 def _normalize(matrix: np.ndarray) -> np.ndarray:
@@ -51,6 +60,34 @@ class VectorStore:
             texts,
             np.asarray(vectors, dtype=np.float32),
         )
+
+    def mentioned(self, question: str) -> list[Hit]:
+        """Players named in the question, matched on a distinctive part of their name.
+
+        Pure embedding search does not reliably retrieve the players a question names —
+        "like Bale and Bakambu" can miss both. Pinning them is the lexical half of a
+        hybrid retrieval: cheap, exact, and it makes comparisons actually answerable.
+        """
+        asked = set(_name_tokens(question))
+        hits: list[Hit] = []
+        for i, name in enumerate(self.names):
+            # Skip very short tokens ("de", "da") — only distinctive ones identify a player.
+            if any(tok in asked for tok in _name_tokens(str(name)) if len(tok) >= 4):
+                hits.append(Hit(int(self.ids[i]), str(name), str(self.texts[i]), 1.0))
+        return hits
+
+    def style_centroid(self, player_ids: list[int]) -> np.ndarray | None:
+        """The mean profile vector of the given players — a "players like these" query.
+
+        Embedding the question text instead makes proper nouns dominate the vector, which
+        retrieves players with similar-*looking names* rather than a similar playing style.
+        """
+        mask = np.isin(self.ids, player_ids)
+        if not mask.any():
+            return None
+        centroid = self.vectors[mask].mean(axis=0)
+        norm = np.linalg.norm(centroid)
+        return centroid / norm if norm else centroid
 
     def search(self, query_vector: list[float], k: int = 6) -> list[Hit]:
         q = np.asarray(query_vector, dtype=np.float32)

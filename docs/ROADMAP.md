@@ -79,9 +79,24 @@ returns per-90 stats.
 - API: `POST /assistant`. CLI: `footyvision index` (build/persist the vector store).
 - Validated: *"médio defensivo que ganhe bolas e intercete"* → retrieves Busquets/Camacho/
   Celso Borges and recommends Camacho with his real intercepting/tackling traits.
-- Honest note: the small local embedding model gives good retrieval for some queries
-  (defensive, dribbling) and noisier results for others (creative, finishing) — a real
-  limitation of embedding short structured profiles with a compact model.
+- Retrieval is hybrid: named players are pinned lexically and their profile centroid —
+  not the question text — is the vector query, because proper nouns otherwise dominate the
+  embedding and pull in similar-*sounding* names. Profiles carry per-90 values and
+  percentiles so comparative questions are answerable.
+- The embedding model was picked by measuring, not by leaderboard — `scripts/eval_embeddings.py`
+  scores position accuracy and trait strength over PT/EN query pairs on these 411 profiles:
+
+  | config | position@6 | trait pct | EN | PT |
+  |---|---|---|---|---|
+  | nomic, no prefixes (original) | 0.60 | 59.7 | 0.90 | 0.30 |
+  | nomic + prefixes | 0.73 | 60.9 | 0.93 | 0.53 |
+  | EmbeddingGemma, no prefixes | 0.68 | 69.9 | 0.83 | 0.53 |
+  | **EmbeddingGemma + prefixes** | **0.85** | **78.0** | **0.97** | **0.73** |
+
+- Honest note: a cross-lingual gap survives (0.97 EN vs 0.73 PT) because the profiles are
+  written in English. "extremo driblador que passa pelos defesas" is still the worst case —
+  its English twin scores 1.00, the Portuguese 0.17. Translating the profiles, or indexing
+  them in both languages, is the open thread.
 
 ---
 

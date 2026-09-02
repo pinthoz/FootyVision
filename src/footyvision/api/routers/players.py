@@ -14,12 +14,23 @@ router = APIRouter(prefix="/players", tags=["players"])
 @router.get("", response_model=list[PlayerOut])
 def list_players(
     search: str | None = Query(None, description="Case-insensitive name filter"),
+    with_stats: bool = Query(
+        False,
+        description=(
+            "Only players that have a season aggregate. The players table also holds "
+            "everyone who merely appeared in a match, and those have no radar or score."
+        ),
+    ),
     limit: int = Query(50, ge=1, le=200),
     session: Session = Depends(get_session),
 ) -> list[Player]:
     stmt = select(Player).order_by(Player.name)
     if search:
         stmt = stmt.where(Player.name.ilike(f"%{search}%"))
+    if with_stats:
+        stmt = stmt.where(
+            select(PlayerSeasonStats.id).where(PlayerSeasonStats.player_id == Player.id).exists()
+        )
     return list(session.scalars(stmt.limit(limit)))
 
 

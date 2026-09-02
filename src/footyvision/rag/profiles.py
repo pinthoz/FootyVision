@@ -46,15 +46,42 @@ def build_profiles(frame: pd.DataFrame) -> list[dict[str, Any]]:
         percentiles = sub[list(PER90_FEATURES)].rank(pct=True) * 100.0
         for idx, r in sub.iterrows():
             ranked = percentiles.loc[idx].sort_values(ascending=False)
-            strengths = [STYLE_PHRASES[f] for f in ranked.index[:4]]
-            weakness = STYLE_PHRASES[ranked.index[-1]]
+            strengths = ", ".join(_phrase_with_value(r, f, ranked[f]) for f in ranked.index[:4])
+            weakest = ranked.index[-1]
             text = (
                 f"{r['name']} is a {r['primary_position']} ({group}) in {r['competition']}. "
-                f"Playing style: he excels at {strengths[0]}, {strengths[1]}, "
-                f"{strengths[2]} and {strengths[3]}. "
-                f"He is weaker at {weakness}. "
+                f"Playing style: he excels at {strengths}. "
+                f"He is weaker at {_phrase_with_value(r, weakest, ranked[weakest])}. "
                 f"Performance score {r['performance_score']:.0f} out of 100 "
                 f"over {int(r['minutes'])} minutes played."
             )
             docs.append({"player_id": int(r["player_id"]), "name": r["name"], "text": text})
     return docs
+
+
+def _phrase_with_value(row: pd.Series, feature: str, percentile: float) -> str:
+    """ "scoring goals (0.61 per 90, 97th percentile among his position group)".
+
+    The numbers matter: without them the assistant cannot answer comparative questions
+    ("who has the most xG?") because every profile reduces to the same stock phrases.
+    """
+    return (
+        f"{STYLE_PHRASES[feature]} "
+        f"({row[feature]:.2f} {_metric_label(feature)} per 90, "
+        f"{_ordinal(round(percentile))} percentile for a {row['position_group']})"
+    )
+
+
+def _metric_label(feature: str) -> str:
+    """ "ball_recoveries_per90" -> "ball recoveries"; "xg_per90" -> "xG"."""
+    name = feature.removesuffix("_per90")
+    return "xG" if name == "xg" else name.replace("_", " ")
+
+
+def _ordinal(n: int) -> str:
+    """1 -> 1st, 2 -> 2nd, 83 -> 83rd, 11 -> 11th."""
+    if 10 <= n % 100 <= 20:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"

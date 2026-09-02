@@ -22,11 +22,14 @@ class LLMClient:
         model: str | None = None,
         api_key: str | None = None,
         timeout: float = 120.0,
+        embed_model: str | None = None,
     ) -> None:
         s = get_settings()
         self.base_url = (base_url or s.llm_base_url).rstrip("/")
         self.model = model or s.llm_model
-        self.embed_model = s.llm_embed_model
+        self.embed_model = embed_model or s.llm_embed_model
+        self.embed_document_prefix = s.llm_embed_document_prefix
+        self.embed_query_prefix = s.llm_embed_query_prefix
         self.api_key = api_key or s.llm_api_key
         self.timeout = timeout
 
@@ -78,8 +81,15 @@ class LLMClient:
         except (KeyError, IndexError, ValueError) as exc:
             raise LLMError(f"Unexpected LLM response shape: {exc}") from exc
 
-    def embed(self, texts: list[str]) -> list[list[float]]:
-        """Return an embedding vector for each input text (OpenAI /embeddings shape)."""
+    def embed(self, texts: list[str], kind: str = "document") -> list[list[float]]:
+        """Return an embedding vector for each input text (OpenAI /embeddings shape).
+
+        `kind` selects the task prefix the model expects: "document" for text being
+        indexed, "query" for a question. Retrieval models are trained asymmetrically and
+        measurably degrade when both sides are embedded the same way.
+        """
+        prefix = self.embed_query_prefix if kind == "query" else self.embed_document_prefix
+        texts = [prefix + t for t in texts]
         url = f"{self.base_url}/embeddings"
         headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
         try:

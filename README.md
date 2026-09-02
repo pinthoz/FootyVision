@@ -67,7 +67,7 @@ Layer-by-layer detail and the reasoning behind each design decision:
 
 - **Backend:** FastAPI · SQLAlchemy 2 · Alembic · PostgreSQL
 - **Data/ML:** pandas · scikit-learn · **XGBoost** · **LightGBM** · **SHAP** · rapidfuzz
-- **LLM (local):** OpenAI-compatible endpoint — chat (Gemma/Qwen/Llama) + embeddings (`nomic-embed-text`)
+- **LLM (local):** OpenAI-compatible endpoint — chat (Gemma/Qwen/Llama) + embeddings (`EmbeddingGemma-300M`)
 - **Data sources:** StatsBomb Open Data (`statsbombpy`) · Transfermarkt values (Kaggle) · FBref/SoFIFA (`soccerdata`)
 - **Frontend:** Next.js dashboard (`frontend/web`) · self-contained Plotly radar demo (`frontend/radar_demo.html`)
 - **Infra:** Docker Compose · GitHub Actions
@@ -99,7 +99,7 @@ uvicorn footyvision.api.main:app --reload    # -> http://localhost:8000/docs
 ```
 
 **LLM features** (reports, NL search, assistant): start LM Studio, load a chat model + the
-`nomic-embed-text` embedding model, Start Server (port 1234), set `LLM_MODEL` in `.env`, then:
+`embeddinggemma-300m` embedding model, Start Server (port 1234), set `LLM_MODEL` in `.env`, then:
 
 ```bash
 footyvision index                     # embed player profiles into the RAG vector store
@@ -137,7 +137,7 @@ src/footyvision/       # the Python package
   cli.py               #   init-db · load · aggregate · talent-report · value-report · index
 frontend/              # radar_demo.html · web/ (Next.js dashboard)
 migrations/            # Alembic
-scripts/               # start.ps1 — one-command local stack
+scripts/               # start.ps1 · eval_embeddings.py (retrieval benchmark)
 tests/                 # 52 tests (unit + API), DB/network/LLM-free
 docs/                  # ARCHITECTURE.md, ROADMAP.md
 ```
@@ -150,6 +150,12 @@ This project deliberately reports what public/free data **can't** do, not just w
   (La Liga 2015/16) — so the pool is that season plus a partial Bundesliga.
 - **FBref** only exposes advanced stats (xG, progression) for the Big-5 leagues, so a rich
   Primeira Liga engine isn't feasible from free sources.
+- The **embedding model was chosen by measurement, not by leaderboard**
+  ([`scripts/eval_embeddings.py`](scripts/eval_embeddings.py) scores retrieval on these 411
+  profiles). The original setup — nomic-embed-text with no task prefixes — retrieved the
+  right position for only **30% of Portuguese queries** against 90% of English ones.
+  EmbeddingGemma-300M with its proper prefixes reaches **73% / 97%**. A cross-lingual gap
+  remains, and the script reports it rather than hiding it.
 - The **value model** is trained on real Transfermarkt values but scores a low held-out
   R² (≈0.05): one season of public per-90 stats plus age barely predicts market value (SHAP
   correctly ranks age #1). Cross-source name matching (Spanish multi-surnames ↔ short TM

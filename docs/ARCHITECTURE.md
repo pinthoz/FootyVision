@@ -72,6 +72,19 @@ a vector DB would be overkill — pgvector or FAISS is the swap-in at larger sca
 `assistant.py` retrieves the top-k profiles and answers strictly from that context,
 citing the players it used.
 
+Retrieval is **hybrid**. Players the question names are pinned lexically (accent-folded
+token match), and the remaining slots are filled by embedding similarity — but the query
+vector is then the *centroid of the pinned players' profiles*, not the question text.
+Embedding the raw question lets proper nouns dominate the vector, which retrieves players
+with similar-looking **names** instead of a similar playing **style**. Each profile also
+carries the per-90 values and percentiles behind its phrases, so comparative questions
+("who has the most xG?") are answerable from the context rather than guessed.
+
+Documents and questions are embedded with the **task prefixes the model was trained on**
+(`title: none | text: ` and `task: search result | query: ` for EmbeddingGemma). Retrieval
+models are trained asymmetrically, and embedding both sides identically measurably hurts —
+[`scripts/eval_embeddings.py`](../scripts/eval_embeddings.py) puts a number on it.
+
 ### 7. API & frontend
 
 `api/main.py` mounts routers per capability (`health`, `players`, `similarity`, `talent`,

@@ -40,17 +40,17 @@ def test_assemble_context_orders_strengths_and_weaknesses():
     assert ctx["name"] == "Test Player"
     assert ctx["position_group"] == "FWD"
     # Highest percentile first among strengths, lowest among weaknesses.
-    assert ctx["strengths"][0]["metric"] == "golos/90"
-    assert ctx["weaknesses"][0]["metric"] == "interceções/90"
+    assert ctx["strengths"][0]["metric"] == "goals/90"
+    assert ctx["weaknesses"][0]["metric"] == "interceptions/90"
     assert ctx["similar_players"][0]["name"] == "Peer"
 
 
 def test_build_prompt_grounds_and_forbids_invention():
     ctx = assemble_context(_target(), "FWD", _metrics(), similar=[])
     system, user = build_prompt(ctx)
-    assert "não inventes" in system.lower()
+    assert "never invent" in system.lower()
     assert "Test Player" in user
-    assert "golos/90" in user
+    assert "goals/90" in user
 
 
 class _FakeClient:
@@ -59,7 +59,7 @@ class _FakeClient:
 
     def chat(self, system: str, user: str, **_) -> str:
         self.calls.append((system, user))
-        return "Resumo: jogador de referência.\nRisco: baixo."
+        return "Summary: benchmark player.\nRisk: low."
 
 
 def test_generate_report_uses_context_and_client(monkeypatch):
@@ -69,9 +69,9 @@ def test_generate_report_uses_context_and_client(monkeypatch):
     client = _FakeClient()
     result = generate_report(session=None, player_id=1, client=client)
     assert result["context"]["name"] == "Test Player"
-    assert "Resumo" in result["report"]
+    assert "Summary" in result["report"]
     # The prompt actually sent to the LLM was grounded in our numbers.
-    assert "golos/90" in client.calls[0][1]
+    assert "goals/90" in client.calls[0][1]
 
 
 def test_generate_report_returns_none_when_player_absent(monkeypatch):
