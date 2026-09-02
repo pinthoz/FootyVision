@@ -9,6 +9,8 @@ import PlayerAvatar from "./components/PlayerAvatar";
 import { getCleanPlayerName } from "./lib/photos";
 import Markdown from "./components/Markdown";
 import Logo from "./components/Logo";
+import MetricDistribution from "./components/MetricDistribution";
+import MetricScatter from "./components/MetricScatter";
 import Bars, { Bar } from "./components/Bars";
 import {
   AssistantResult,
@@ -46,7 +48,7 @@ export default function Home() {
   const [similarB, setSimilarB] = useState<Similar[]>([]);
   const [similarTarget, setSimilarTarget] = useState<"A" | "B">("A");
   const [modelInfo, setModelInfo] = useState<ModelInfoResponse | null>(null);
-  const [activeTab, setActiveTab] = useState<"radar" | "duel" | "score" | "styles">("radar");
+  const [activeTab, setActiveTab] = useState<"radar" | "duel" | "score" | "styles" | "spread" | "scatter">("radar");
   const [radarPreset, setRadarPreset] = useState<string>("curated");
   const [aiSubTab, setAiSubTab] = useState<"assistant" | "search" | "report">("assistant");
   const [searchQuery, setSearchQuery] = useState("");
@@ -477,6 +479,8 @@ export default function Home() {
                 { id: "duel", label: "Head to head" },
                 { id: "score", label: "Score breakdown" },
                 { id: "styles", label: "Style profile" },
+                { id: "spread", label: "Distribution" },
+                { id: "scatter", label: "Two metrics" },
               ].map((t) => (
                 <button
                   key={t.id}
@@ -551,6 +555,36 @@ export default function Home() {
                 </div>
               </div>
             )}
+
+            {activeTab === "spread" &&
+              (a ? (
+                <MetricDistribution
+                  positionGroup={a.radar.position_group}
+                  markers={[
+                    { playerId: a.player.id, name: a.player.name, color: "var(--a)" },
+                    ...(b && b.radar.position_group === a.radar.position_group
+                      ? [{ playerId: b.player.id, name: b.player.name, color: "var(--b)" }]
+                      : []),
+                  ]}
+                />
+              ) : (
+                <div className="muted">Pick a player to see the field he is measured against.</div>
+              ))}
+
+            {activeTab === "scatter" &&
+              (a ? (
+                <MetricScatter
+                  positionGroup={a.radar.position_group}
+                  markers={[
+                    { playerId: a.player.id, name: a.player.name, color: "var(--a)" },
+                    ...(b && b.radar.position_group === a.radar.position_group
+                      ? [{ playerId: b.player.id, name: b.player.name, color: "var(--b)" }]
+                      : []),
+                  ]}
+                />
+              ) : (
+                <div className="muted">Pick a player to plot him against his position group.</div>
+              ))}
 
             {activeTab === "duel" && (
               <StatDuel

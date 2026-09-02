@@ -198,3 +198,32 @@ def test_assistant_returns_503_when_the_llm_is_unreachable(client, monkeypatch):
     monkeypatch.setattr(assistant_router, "get_store", _unreachable)
     response = client.post("/assistant", json={"question": "who wins the ball back?"})
     assert response.status_code == 503
+
+
+# --- metric distribution --------------------------------------------------------------
+
+
+def test_metric_distribution_returns_every_player_in_the_pool(client):
+    body = client.get("/metrics/xg_per90/distribution", params={"min_minutes": 500}).json()
+    assert body["metric"] == "xg_per90"
+    # Player 6 sits below the minutes floor, so five of the six seeded players remain.
+    assert body["count"] == 5
+    assert max(v["value"] for v in body["values"]) == pytest.approx(0.80)
+
+
+def test_metric_distribution_can_scope_to_a_position_group(client):
+    body = client.get(
+        "/metrics/xg_per90/distribution",
+        params={"min_minutes": 500, "position_group": "FWD"},
+    ).json()
+    assert body["position_group"] == "FWD"
+    assert {v["name"] for v in body["values"]} == {
+        "Alpha Striker",
+        "Bravo Striker",
+        "Charlie Striker",
+    }
+
+
+def test_metric_distribution_rejects_a_metric_outside_the_feature_set(client):
+    response = client.get("/metrics/salary/distribution")
+    assert response.status_code == 422

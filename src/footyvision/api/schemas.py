@@ -150,3 +150,18 @@ class AssistantSource(BaseModel):
 class AssistantResponse(BaseModel):
     answer: str
     sources: list[AssistantSource]
+
+
+class DistributionPoint(BaseModel):
+    player_id: int
+    name: str
+    value: float
+
+
+class DistributionResponse(BaseModel):
+    """One metric's value for every player in the pool, for plotting a distribution."""
+
+    metric: str
+    position_group: str | None
+    count: int
+    values: list[DistributionPoint]

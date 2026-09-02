@@ -51,6 +51,15 @@ export type ModelInfoResponse = {
   n_test: number;
 };
 
+export type DistributionPoint = { player_id: number; name: string; value: number };
+
+export type Distribution = {
+  metric: string;
+  position_group: string | null;
+  count: number;
+  values: DistributionPoint[];
+};
+
 export type SearchRow = {
   player_id: number;
   name: string;
@@ -89,6 +98,11 @@ export const api = {
   similar: (id: number) =>
     get<{ results: Similar[] }>(`/players/${id}/similar?top_n=10`).then((r) => r.results),
   score: (id: number) => get<Score>(`/players/${id}/score`),
+  distribution: (metric: string, positionGroup?: string) =>
+    get<Distribution>(
+      `/metrics/${metric}/distribution` +
+        (positionGroup ? `?position_group=${positionGroup}` : "")
+    ),
   rankings: (positionGroup?: string, topN = 20) =>
     get<{ results: RankingRow[] }>(
       `/rankings?top_n=${topN}` + (positionGroup ? `&position_group=${positionGroup}` : "")

@@ -7,6 +7,7 @@ from footyvision import __version__
 from footyvision.api.routers import (
     assistant,
     health,
+    metrics,
     players,
     reports,
     search,
@@ -34,6 +35,7 @@ app.include_router(similarity.router)
 app.include_router(reports.router)
 app.include_router(search.router)
 app.include_router(talent.router)
+app.include_router(metrics.router)
 app.include_router(assistant.router)
 
 
