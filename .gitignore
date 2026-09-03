@@ -70,7 +70,8 @@ frontend/web/build/
 
 # --- Database Dumps, Backups & Large Data ---
 data/
-models/
+models/*
+!models/talent/
 *.sql
 *.dump
 *.tar

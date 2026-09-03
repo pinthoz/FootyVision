@@ -28,14 +28,13 @@ dependencies = [
     # Config
     "pydantic>=2.7",
     "pydantic-settings>=2.3",
-    # Data / ETL
+    # Data / Aggregation
     "pandas>=2.2",
     "numpy>=1.26",
-    "statsbombpy>=1.13",
     # CLI
     "typer>=0.12",
     "rich>=13.7",
-    # LLM (OpenAI-compatible HTTP client for local LM Studio / Ollama)
+    # LLM (OpenAI-compatible HTTP client for local LM Studio / Ollama / Cloud)
     "httpx>=0.27",
     # ML: similarity, Performance Score, XGBoost position classifier + SHAP
     "scikit-learn>=1.5",
@@ -44,11 +43,14 @@ dependencies = [
     # Value predictor: LightGBM regression + fuzzy name matching to FIFA/market values
     "lightgbm>=4.0",
     "rapidfuzz>=3.0",
-    # SoFIFA / FBref market-value & extra-stats source
-    "soccerdata>=1.8",
 ]
 
 [project.optional-dependencies]
+etl = [
+    # Scraping / Extraction dependencies: not needed in API production runtime
+    "statsbombpy>=1.13",
+    "soccerdata>=1.8",
+]
 ml = [
     # Optional: UMAP 2D "player map" (visualisation only, Phase 1 stretch).
     "umap-learn>=0.5",
@@ -57,6 +59,8 @@ dev = [
     "pytest>=8.2",
     "httpx>=0.27",
     "ruff>=0.5",
+    "statsbombpy>=1.13",
+    "soccerdata>=1.8",
 ]
 
 [project.urls]

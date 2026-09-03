@@ -8,9 +8,12 @@ a per-player *style profile* (how FWD/MID/DEF-like they play) and *role mismatch
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
+import joblib
 import numpy as np
 import pandas as pd
 from sklearn.metrics import accuracy_score
@@ -19,6 +22,9 @@ from xgboost import XGBClassifier
 
 from footyvision.ml.features import FOOT_FEATURES, PER90_FEATURES
 from footyvision.ml.similarity import _target_index
+
+# Directory containing pre-trained model artifacts.
+MODELS_DIR = Path(__file__).resolve().parents[3] / "models" / "talent"
 
 # Position groups the classifier learns (Unknown excluded; tiny classes handled at fit).
 _TRAIN_GROUPS = ("GK", "DEF", "MID", "FWD")
@@ -121,7 +127,14 @@ def shap_importance(tm: TalentModel, frame: pd.DataFrame, top_n: int = 10) -> li
     """Global mean |SHAP| importance per feature (which metrics define position)."""
     import shap
 
-    x = frame[tm.features].to_numpy(dtype=float)
+    # Subsample to at most 150 rows: global SHAP rankings converge with ~100 samples,
+    # while computing TreeExplainer over thousands of samples in multi-class consumes
+    # substantial memory and CPU, risking cold-start OOM on constrained runtimes (e.g. 512MB).
+    data = frame
+    if len(frame) > 150:
+        data = frame.sample(150, random_state=42)
+
+    x = data[tm.features].to_numpy(dtype=float)
     values = np.abs(np.array(shap.TreeExplainer(tm.model).shap_values(x)))
     # Reduce over every axis except the feature axis, wherever it lands.
     feat_axis = next(ax for ax, size in enumerate(values.shape) if size == len(tm.features))
@@ -156,26 +169,50 @@ def role_mismatches(
     return out[:top_n]
 
 
-# Trained lazily and cached — the loaded dataset is static within a process.
+# Trained lazily, persisted to disk, and cached in memory.
 _CACHE: dict[str, TalentModel] = {}
+_SHAP_CACHE: dict[str, list[dict[str, Any]]] = {}
 
 
 def get_cached_model(frame: pd.DataFrame) -> TalentModel:
     if "model" not in _CACHE:
-        _CACHE["model"] = train_position_classifier(frame)
+        disk_path = MODELS_DIR / "position_group.joblib"
+        if disk_path.is_file():
+            try:
+                loaded = joblib.load(disk_path)
+                if isinstance(loaded, TalentModel) and set(loaded.features).issubset(frame.columns):
+                    _CACHE["model"] = loaded
+            except Exception:
+                pass
+        if "model" not in _CACHE:
+            _CACHE["model"] = train_position_classifier(frame)
+            try:
+                MODELS_DIR.mkdir(parents=True, exist_ok=True)
+                joblib.dump(_CACHE["model"], disk_path, compress=3)
+            except Exception:
+                pass
     return _CACHE["model"]
 
 
 def get_cached_role_model(frame: pd.DataFrame) -> TalentModel:
     """The finer-grained sibling: ten side-agnostic roles instead of four groups."""
     if "role" not in _CACHE:
-        _CACHE["role"] = train_position_classifier(frame, target="position_role")
+        disk_path = MODELS_DIR / "position_role.joblib"
+        if disk_path.is_file():
+            try:
+                loaded = joblib.load(disk_path)
+                if isinstance(loaded, TalentModel) and set(loaded.features).issubset(frame.columns):
+                    _CACHE["role"] = loaded
+            except Exception:
+                pass
+        if "role" not in _CACHE:
+            _CACHE["role"] = train_position_classifier(frame, target="position_role")
+            try:
+                MODELS_DIR.mkdir(parents=True, exist_ok=True)
+                joblib.dump(_CACHE["role"], disk_path, compress=3)
+            except Exception:
+                pass
     return _CACHE["role"]
-
-
-# SHAP over the whole frame is not free and the answer does not change while the model is
-# cached, so the ranking is memoised beside it.
-_SHAP_CACHE: dict[str, list[dict[str, Any]]] = {}
 
 
 def get_cached_importance(
@@ -183,5 +220,21 @@ def get_cached_importance(
 ) -> list[dict[str, Any]]:
     key = str(top_n)
     if key not in _SHAP_CACHE:
-        _SHAP_CACHE[key] = shap_importance(tm, frame, top_n=top_n)
+        disk_path = MODELS_DIR / "shap_importance.json"
+        if disk_path.is_file():
+            try:
+                with open(disk_path, encoding="utf-8") as f:
+                    stored = json.load(f)
+                if isinstance(stored, list) and len(stored) >= top_n:
+                    _SHAP_CACHE[key] = stored[:top_n]
+            except Exception:
+                pass
+        if key not in _SHAP_CACHE:
+            _SHAP_CACHE[key] = shap_importance(tm, frame, top_n=top_n)
+            try:
+                MODELS_DIR.mkdir(parents=True, exist_ok=True)
+                with open(disk_path, "w", encoding="utf-8") as f:
+                    json.dump(_SHAP_CACHE[key], f, indent=2)
+            except Exception:
+                pass
     return _SHAP_CACHE[key]
