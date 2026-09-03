@@ -20,3 +20,11 @@ services:
         value: gemini-2.5-flash
       - key: CLOUD_LLM_EMBED_MODEL
         value: gemini-embedding-2
+      # Which frontends may call this API from a browser. Set to the Vercel URL.
+      # Leaving it unset falls back to localhost, which blocks the deployed dashboard.
+      - key: CORS_ORIGINS
+        sync: false
+      # Calls per minute per client to the endpoints that invoke an LLM. Without this,
+      # anyone who finds the URL can drain GEMINI_API_KEY.
+      - key: RATE_LIMIT_PER_MINUTE
+        value: "20"

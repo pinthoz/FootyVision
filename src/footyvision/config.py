@@ -33,6 +33,14 @@ class Settings(BaseSettings):
     llm_embed_query_prefix: str = "task: search result | query: "
     llm_api_key: str = "not-needed-for-local"
 
+    # --- Serving ---
+    # Comma-separated origins allowed to call the API from a browser. Empty means local
+    # development only: a public deployment must set this to its own frontend, because
+    # "*" lets any site on the internet spend this instance's LLM budget.
+    cors_origins: str = ""
+    # Calls per minute per client to the endpoints that invoke an LLM. 0 disables it.
+    rate_limit_per_minute: int = 20
+
     # --- Fine-tuned retriever (optional) ---
     # Path to the sentence-transformers model produced by scripts/finetune_embeddings.py.
     # When set, BOTH the index and the queries are embedded with it — mixing it with the
@@ -54,6 +62,12 @@ class Settings(BaseSettings):
             or self.cloud_llm_api_key
             or (self.llm_api_key if self.llm_api_key != "not-needed-for-local" else "")
         )
+
+    @property
+    def allowed_origins(self) -> list[str]:
+        """Origins for CORS, defaulting to the local dashboard when unset."""
+        origins = [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+        return origins or ["http://localhost:3000", "http://127.0.0.1:3000"]
 
     @property
     def sqlalchemy_url(self) -> str:

@@ -121,7 +121,10 @@ class PlayerVector(Base):
 
     __tablename__ = "player_vectors"
 
-    player_id: Mapped[int] = mapped_column(ForeignKey("players.id"), primary_key=True)
+    # A surrogate key, not the player id: a player who changed league mid-season holds one
+    # profile per competition, and both belong in the index.
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    player_id: Mapped[int] = mapped_column(ForeignKey("players.id"), index=True)
     name: Mapped[str] = mapped_column(String(120))
     text: Mapped[str] = mapped_column(Text)
     # float32 little-endian, straight from numpy. A float array column would be portable

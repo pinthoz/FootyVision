@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from footyvision.api.limits import rate_limit
 from footyvision.api.schemas import ReportContextResponse, ReportResponse
 from footyvision.config import get_settings
 from footyvision.db.base import get_session
@@ -39,7 +40,9 @@ def report_context(
     return ReportContextResponse(player_id=player_id, context=context)
 
 
-@router.post("/players/{player_id}/report", response_model=ReportResponse)
+@router.post(
+    "/players/{player_id}/report", response_model=ReportResponse, dependencies=[Depends(rate_limit)]
+)
 def player_report(
     player_id: int,
     min_minutes: float | None = Query(None),

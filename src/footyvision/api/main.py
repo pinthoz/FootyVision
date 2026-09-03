@@ -15,6 +15,7 @@ from footyvision.api.routers import (
     similarity,
     talent,
 )
+from footyvision.config import get_settings
 
 app = FastAPI(
     title="FootyVision API",
@@ -22,12 +23,15 @@ app = FastAPI(
     description="AI football scouting platform — similarity, talent scoring and LLM reports.",
 )
 
-# Open CORS for local frontend development (tighten before any real deployment).
+# Browsers may only call this API from the configured frontends. This is hygiene, not a
+# security boundary: it constrains other *sites*, not scripts. The rate limiter in
+# api/limits.py is what actually protects the LLM budget.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=get_settings().allowed_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 app.include_router(health.router)

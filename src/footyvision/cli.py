@@ -201,14 +201,27 @@ def value_report(
 
 
 @app.command("index")
-def index_cmd() -> None:
-    """Embed all player profiles and persist the RAG vector store (needs the LLM server)."""
+def index_cmd(
+    to_file: bool = typer.Option(
+        False, "--to-file", help="Also write the legacy .npz alongside the database copy."
+    ),
+) -> None:
+    """Embed all player profiles and persist the RAG index to Postgres."""
+    from footyvision.llm.client import LLMClient
     from footyvision.rag.service import STORE_PATH, build_store
 
+    client = LLMClient()
     with SessionLocal() as session:
-        console.print("[cyan]Embedding player profiles via the local model...[/cyan]")
-        store = build_store(session)
-    console.print(f"[green]Indexed {len(store)} profiles -> {STORE_PATH}[/green]")
+        console.print("[cyan]Embedding player profiles...[/cyan]")
+        store = build_store(session, client)
+        if to_file:
+            store.save(STORE_PATH)
+    console.print(
+        f"[green]Indexed {len(store)} profiles into Postgres "
+        f"(embedded by {client.last_embed_model}).[/green]"
+    )
+    if to_file:
+        console.print(f"[green]Also written to {STORE_PATH}.[/green]")
 
 
 if __name__ == "__main__":

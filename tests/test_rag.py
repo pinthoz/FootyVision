@@ -352,3 +352,65 @@ def test_store_is_stale_reports_players_missing_from_the_index(db_session):
     store = VectorStore([1], ["Alpha Striker"], ["a profile"], np.ones((1, 4), dtype=np.float32))
 
     assert store_is_stale(db_session, store) > 0
+
+
+# --- the index lives in Postgres --------------------------------------------------------
+
+
+def _seeded_store(db_session):
+    import numpy as np
+
+    from footyvision.rag.store import VectorStore
+
+    return VectorStore(
+        [1, 2],
+        ["Alpha Striker", "Bravo Striker"],
+        ["alpha profile", "bravo profile"],
+        np.eye(2, 4, dtype=np.float32),
+        attrs={"foot": ["left", None], "age": [21.0, np.nan], "position_group": ["FWD", "FWD"]},
+    )
+
+
+def test_index_round_trips_through_the_database(db_session):
+    """The file is on an ephemeral disk in production; the database is not."""
+    from footyvision.rag.store import VectorStore
+
+    saved = _seeded_store(db_session).save_db(db_session, "test-embedder")
+    loaded, built_with = VectorStore.load_db(db_session)
+
+    assert saved == 2
+    assert built_with == "test-embedder"
+    assert list(loaded.ids) == [1, 2]
+    assert loaded.vectors.shape == (2, 4)
+
+
+def test_stored_index_keeps_the_filter_attributes(db_session):
+    from footyvision.rag.constraints import Constraints
+    from footyvision.rag.store import VectorStore
+
+    _seeded_store(db_session).save_db(db_session, "test-embedder")
+    loaded, _ = VectorStore.load_db(db_session)
+
+    # The unknown foot must still fail the filter after a round trip, not pass it.
+    assert list(loaded.ids[loaded.matching(Constraints(foot="left"))]) == [1]
+
+
+def test_saving_the_index_replaces_the_previous_one(db_session):
+    """A rebuild must not leave half of an older, differently-sized index behind."""
+    from footyvision.rag.store import VectorStore
+
+    _seeded_store(db_session).save_db(db_session, "old-embedder")
+    VectorStore([9], ["Only One"], ["p"], __import__("numpy").eye(1, 4, dtype="float32")).save_db(
+        db_session, "new-embedder"
+    )
+
+    loaded, built_with = VectorStore.load_db(db_session)
+
+    assert list(loaded.ids) == [9]
+    assert built_with == "new-embedder"
+
+
+def test_load_db_returns_none_when_nothing_is_stored(db_session):
+    from footyvision.rag.store import VectorStore
+
+    assert VectorStore.load_db(db_session) is None

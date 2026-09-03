@@ -167,7 +167,8 @@ class LLMClient:
                 local_exc = exc
                 if not self.cloud_api_key:
                     raise LLMError(
-                        f"Local LLM request to {self.base_url} failed ({exc}). Is LM Studio / Ollama running?"
+                        f"Local LLM request to {self.base_url} failed ({exc}). "
+                        "Is LM Studio / Ollama running?"
                     ) from exc
                 logger.info(
                     "Local LLM unreachable (%s). Falling back to Cloud LLM (%s)...",
@@ -231,7 +232,10 @@ class LLMClient:
                 ]
                 try:
                     resp = httpx.post(
-                        embed_url, json={"requests": requests}, headers=headers, timeout=self.timeout
+                        embed_url,
+                        json={"requests": requests},
+                        headers=headers,
+                        timeout=self.timeout,
                     )
                     if resp.status_code == 200:
                         return [item["values"] for item in resp.json()["embeddings"]]

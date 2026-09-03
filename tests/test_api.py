@@ -227,3 +227,101 @@ def test_metric_distribution_can_scope_to_a_position_group(client):
 def test_metric_distribution_rejects_a_metric_outside_the_feature_set(client):
     response = client.get("/metrics/salary/distribution")
     assert response.status_code == 422
+
+
+# --- rate limiting and CORS -------------------------------------------------------------
+
+
+def test_llm_endpoints_are_throttled_per_client(client, monkeypatch):
+    """An unthrottled public deployment lets anyone drain the API key attached to it."""
+    from footyvision.api import limits
+    from footyvision.config import Settings, get_settings
+
+    limits.reset()
+    get_settings.cache_clear()
+    monkeypatch.setattr(
+        get_settings, "__wrapped__", lambda: Settings(rate_limit_per_minute=2), raising=False
+    )
+    monkeypatch.setattr(limits, "get_settings", lambda: Settings(rate_limit_per_minute=2))
+
+    def _answer(self, question, k=6):
+        return {"answer": "ok", "sources": []}
+
+    monkeypatch.setattr(assistant_router.ScoutAssistant, "answer", _answer)
+    monkeypatch.setattr(assistant_router, "get_store", lambda *_a, **_k: object())
+
+    codes = [client.post("/assistant", json={"question": "q"}).status_code for _ in range(3)]
+
+    assert codes[:2] == [200, 200]
+    assert codes[2] == 429
+    limits.reset()
+
+
+def test_a_throttled_response_says_when_to_retry(client, monkeypatch):
+    from footyvision.api import limits
+    from footyvision.config import Settings
+
+    limits.reset()
+    monkeypatch.setattr(limits, "get_settings", lambda: Settings(rate_limit_per_minute=1))
+
+    def _answer(self, question, k=6):
+        return {"answer": "ok", "sources": []}
+
+    monkeypatch.setattr(assistant_router.ScoutAssistant, "answer", _answer)
+    monkeypatch.setattr(assistant_router, "get_store", lambda *_a, **_k: object())
+
+    client.post("/assistant", json={"question": "q"})
+    blocked = client.post("/assistant", json={"question": "q"})
+
+    assert blocked.status_code == 429
+    assert "Retry-After" in blocked.headers
+    limits.reset()
+
+
+def test_rate_limit_of_zero_disables_throttling(client, monkeypatch):
+    """Local development and the rest of this suite run with the limiter off."""
+    from footyvision.api import limits
+    from footyvision.config import Settings
+
+    limits.reset()
+    monkeypatch.setattr(limits, "get_settings", lambda: Settings(rate_limit_per_minute=0))
+
+    def _answer(self, question, k=6):
+        return {"answer": "ok", "sources": []}
+
+    monkeypatch.setattr(assistant_router.ScoutAssistant, "answer", _answer)
+    monkeypatch.setattr(assistant_router, "get_store", lambda *_a, **_k: object())
+
+    codes = [client.post("/assistant", json={"question": "q"}).status_code for _ in range(5)]
+
+    assert codes == [200] * 5
+
+
+def test_clients_are_told_apart_by_the_forwarded_header():
+    """Render and Vercel terminate TLS in front of the app, so every caller would
+    otherwise share one bucket behind the proxy's own address."""
+    from starlette.datastructures import Headers
+
+    from footyvision.api.limits import client_key
+
+    class _Request:
+        def __init__(self, forwarded):
+            self.headers = Headers({"x-forwarded-for": forwarded} if forwarded else {})
+            self.client = None
+
+    assert client_key(_Request("203.0.113.7, 10.0.0.1")) == "203.0.113.7"
+    assert client_key(_Request(None)) == "unknown"
+
+
+def test_cors_defaults_to_local_development_when_unset():
+    """ "*" would let any site on the internet spend this instance's LLM budget."""
+    from footyvision.config import Settings
+
+    assert Settings(cors_origins="").allowed_origins == [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
+    assert Settings(cors_origins="https://a.app, https://b.app").allowed_origins == [
+        "https://a.app",
+        "https://b.app",
+    ]
