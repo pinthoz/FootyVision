@@ -325,3 +325,16 @@ def test_cors_defaults_to_local_development_when_unset():
         "https://a.app",
         "https://b.app",
     ]
+
+
+def test_cors_allows_vercel_origins():
+    from fastapi.testclient import TestClient
+
+    from footyvision.api.main import app
+
+    client = TestClient(app)
+    response = client.get("/", headers={"Origin": "https://footy-vision-tau.vercel.app"})
+    assert response.status_code == 200
+    assert (
+        response.headers.get("access-control-allow-origin") == "https://footy-vision-tau.vercel.app"
+    )
