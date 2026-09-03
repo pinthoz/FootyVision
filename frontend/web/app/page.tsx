@@ -1132,11 +1132,23 @@ function Assistant({
           onKeyDown={(e) => e.key === "Enter" && ask()}
         />
         <button
-          className="action-btn primary-btn"
+          className={`action-btn primary-btn ${busy ? "is-busy" : ""}`}
           onClick={() => ask()}
           disabled={busy}
         >
-          {busy ? "Thinking…" : "Ask"}
+          {busy ? (
+            <>
+              <span className="btn-spinner" />
+              Thinking
+              <span className="busy-dots">
+                <span />
+                <span />
+                <span />
+              </span>
+            </>
+          ) : (
+            "Ask"
+          )}
         </button>
       </div>
 
@@ -1155,6 +1167,26 @@ function Assistant({
           </button>
         ))}
       </div>
+
+      {busy && (
+        <div className="ai-thinking-state">
+          <div className="ai-pulse-orb" />
+          <div className="ai-thinking-text">
+            <div className="ai-thinking-title">
+              Scout AI is thinking
+              <span className="busy-dots">
+                <span />
+                <span />
+                <span />
+              </span>
+            </div>
+            <div className="ai-thinking-subtitle">
+              Retrieving player vectors, grounding tactical stats & formulating answer…
+            </div>
+          </div>
+          <div className="ai-scanline-bar" />
+        </div>
+      )}
 
       {answer ? (
         <div className="prose ai-response-box">
@@ -1242,15 +1274,47 @@ function NLSearch({
           onKeyDown={(e) => e.key === "Enter" && run()}
         />
         <button
-          className="action-btn primary-btn"
+          className={`action-btn primary-btn ${busy ? "is-busy" : ""}`}
           onClick={run}
           disabled={busy}
         >
-          {busy ? "Filtering…" : "Run Query"}
+          {busy ? (
+            <>
+              <span className="btn-spinner" />
+              Filtering
+              <span className="busy-dots">
+                <span />
+                <span />
+                <span />
+              </span>
+            </>
+          ) : (
+            "Run Query"
+          )}
         </button>
       </div>
 
-      {info && <div className="nl-search-info">{info}</div>}
+      {busy && (
+        <div className="ai-thinking-state filter-state">
+          <div className="ai-pulse-orb filter-orb" />
+          <div className="ai-thinking-text">
+            <div className="ai-thinking-title">
+              Filtering Player Pool
+              <span className="busy-dots">
+                <span />
+                <span />
+                <span />
+              </span>
+            </div>
+            <div className="ai-thinking-subtitle">
+              Parsing natural language constraints into SQL filters & ranking candidate profiles…
+            </div>
+          </div>
+          <div className="ai-scanline-bar filter-bar" />
+        </div>
+      )}
+
+      {info && !busy && <div className="nl-search-info">{info}</div>}
 
       <div className="nl-results-grid">
         {rows.map((r) => (
@@ -1337,19 +1401,58 @@ function Report({
 
       <div className="report-actions-row">
         <button
-          className="action-btn primary-btn"
+          className={`action-btn primary-btn ${busy ? "is-busy" : ""}`}
           onClick={generate}
           disabled={!targetPlayer || busy}
         >
-          {busy
-            ? "Generating Report…"
-            : `Generate report${targetPlayer ? ` for ${targetPlayer.name}` : ""}`}
+          {busy ? (
+            <>
+              <span className="btn-spinner" />
+              Generating Dossier
+              <span className="busy-dots">
+                <span />
+                <span />
+                <span />
+              </span>
+            </>
+          ) : (
+            `Generate report${targetPlayer ? ` for ${targetPlayer.name}` : ""}`
+          )}
         </button>
       </div>
 
-      <div className="prose report-document-box">
-        <Markdown text={text} />
-      </div>
+      {busy ? (
+        <div className="report-generating-card">
+          <div className="report-gen-header">
+            <div className="report-badge-pulsing">
+              <span className="pulsing-radar-dot" />
+              AI SCOUT ENGINE ACTIVE
+            </div>
+            <span className="report-gen-target">
+              Synthesizing scouting dossier for <strong>{targetPlayer?.name}</strong>
+              <span className="busy-dots">
+                <span />
+                <span />
+                <span />
+              </span>
+            </span>
+          </div>
+          <div className="report-skeleton-lines">
+            <div className="skeleton-line long" />
+            <div className="skeleton-line medium" />
+            <div className="skeleton-line short" />
+            <div className="skeleton-spacer" />
+            <div className="skeleton-line medium" />
+            <div className="skeleton-line long" />
+            <div className="skeleton-line short" />
+          </div>
+          <div className="ai-scanline-bar" />
+        </div>
+      ) : (
+        <div className="prose report-document-box">
+          <Markdown text={text} />
+        </div>
+      )}
     </div>
   );
 }
