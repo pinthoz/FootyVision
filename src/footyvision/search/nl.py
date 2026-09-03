@@ -27,6 +27,7 @@ def build_nl_prompt(text: str) -> tuple[str, str]:
         "Schema:\n"
         "{\n"
         '  "position_group": one of "GK"|"DEF"|"MID"|"FWD" or null,\n'
+        '  "foot": one of "left"|"right"|"both" or null,\n'
         '  "competition": league-name substring or null,\n'
         '  "min_minutes": number or null,\n'
         '  "conditions": [{"field": <field>, "op": "gt"|"gte"|"lt"|"lte"|"eq", "value": number}],\n'
@@ -35,8 +36,12 @@ def build_nl_prompt(text: str) -> tuple[str, str]:
         '  "limit": integer (1-100)\n'
         "}\n"
         f"Allowed <field> values (per-90 unless stated): {_fields_help()}.\n"
-        "There is NO age/date-of-birth data, so ignore any age constraint (e.g. 'under 23') "
-        "and do not invent a field for it. Map metric names to the closest allowed field "
+        "Preferred foot is the top-level 'foot' key, never a condition: "
+        '\'left-footed wingers\' sets "foot": "left". Height in centimetres is the '
+        "'height_cm' field, so 'taller than 190cm' is a condition on it.\n"
+        "Age IS available as the 'age' field, in years at the middle of the season: "
+        '\'under 23\' becomes {"field": "age", "op": "lt", "value": 23} and '
+        "'over 30' uses op 'gt'. Map metric names to the closest allowed field "
         "(e.g. 'xG per 90' -> 'xg_per90', 'progressive passes' -> 'progressive_passes_per90')."
     )
     user = f"Request: {text}\nJSON:"

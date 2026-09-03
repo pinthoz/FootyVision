@@ -8,7 +8,16 @@ from __future__ import annotations
 
 from datetime import date
 
-from sqlalchemy import Date, Float, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    Date,
+    Float,
+    ForeignKey,
+    Integer,
+    LargeBinary,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from footyvision.db.base import Base
@@ -71,6 +80,18 @@ class Player(Base):
     id: Mapped[int] = mapped_column(primary_key=True)  # StatsBomb player_id
     name: Mapped[str] = mapped_column(String(120), index=True)
     country: Mapped[str | None] = mapped_column(String(120))
+    # The short form the player is actually known by ("Joselu" for "José Luis Sanmartín
+    # Mato"). The lineup feed carries it, and it is the form other providers use, which
+    # makes it a far better key for cross-source matching than the full legal name.
+    nickname: Mapped[str | None] = mapped_column(String(120), index=True)
+    # Absent from the open data entirely; backfilled from the Transfermarkt export.
+    date_of_birth: Mapped[date | None] = mapped_column(Date)
+    # "right" | "left" | "both". The only attribute here that carries a *side*, which is
+    # why the exact-position classifier takes it and the side-agnostic ones do not.
+    foot: Mapped[str | None] = mapped_column(String(10))
+    # A scouting attribute, not a model feature: ablation showed it adds nothing to
+    # position prediction (0.489 -> 0.491, inside the noise).
+    height_cm: Mapped[float | None] = mapped_column(Float)
 
 
 class Match(Base):
@@ -82,6 +103,36 @@ class Match(Base):
     match_date: Mapped[date | None] = mapped_column(Date)
     home_team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"))
     away_team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"))
+
+
+class PlayerVector(Base):
+    """The RAG index, stored in the database rather than on disk.
+
+    On a platform with an ephemeral filesystem — Render's free tier, for one — a `.npz`
+    written at runtime does not survive a restart, so every cold start would re-embed the
+    whole squad inside the first HTTP request that needed it. Postgres already outlives
+    the container, so the index lives there.
+
+    `embed_model` is the important column: vectors are only comparable to a query encoded
+    by the *same* model, and this instance can embed via a fine-tuned local model, LM
+    Studio or a cloud provider. Recording which one produced the index lets a mismatch be
+    detected rather than silently returning confident nonsense.
+    """
+
+    __tablename__ = "player_vectors"
+
+    player_id: Mapped[int] = mapped_column(ForeignKey("players.id"), primary_key=True)
+    name: Mapped[str] = mapped_column(String(120))
+    text: Mapped[str] = mapped_column(Text)
+    # float32 little-endian, straight from numpy. A float array column would be portable
+    # but roughly four times the size and slower to reassemble.
+    vector: Mapped[bytes] = mapped_column(LargeBinary)
+    dim: Mapped[int] = mapped_column(Integer)
+    embed_model: Mapped[str] = mapped_column(String(200), index=True)
+    # Attributes the retriever filters on before ranking.
+    foot: Mapped[str | None] = mapped_column(String(10))
+    age: Mapped[float | None] = mapped_column(Float)
+    position_group: Mapped[str | None] = mapped_column(String(20))
 
 
 class PlayerMatchStats(Base):

@@ -12,7 +12,11 @@ from pathlib import Path
 
 import pandas as pd
 
-LA_LIGA_TM = "ES1"
+# Transfermarkt competition codes for the four leagues we hold complete 2015/16
+# seasons of. Widening the labels from Spain alone took the value model from
+# 245/411 matched rows to 1182/1570.
+LEAGUE_CODES: tuple[str, ...] = ("ES1", "GB1", "IT1", "FR1")
+LA_LIGA_TM = "ES1"  # kept for callers that only want Spain
 # A wide window (values are only updated a few times a year, so a tight season window
 # misses players); we then keep each player's valuation closest to the season reference.
 SEASON_START = "2014-07-01"
@@ -20,8 +24,10 @@ SEASON_END = "2017-06-30"
 SEASON_REF = pd.Timestamp("2016-01-01")  # mid-season reference for "age" and value pick
 
 
-def read_laliga_values_2016(data_dir: str | Path = "data") -> pd.DataFrame:
-    """Return [name, value_eur, age] for La Liga players in the 2015/16 window."""
+def read_market_values_2016(
+    data_dir: str | Path = "data", competitions: tuple[str, ...] = LEAGUE_CODES
+) -> pd.DataFrame:
+    """Return [name, value_eur, age] for players of `competitions` in 2015/16."""
     data_dir = Path(data_dir)
     vals = pd.read_csv(data_dir / "player_valuations.csv", parse_dates=["date"])
     players = pd.read_csv(data_dir / "players.csv")
@@ -29,7 +35,7 @@ def read_laliga_values_2016(data_dir: str | Path = "data") -> pd.DataFrame:
     window = vals[
         (vals["date"] >= SEASON_START)
         & (vals["date"] <= SEASON_END)
-        & (vals["player_club_domestic_competition_id"] == LA_LIGA_TM)
+        & (vals["player_club_domestic_competition_id"].isin(competitions))
     ].copy()
 
     # For each player keep the valuation closest to mid-season.
@@ -47,3 +53,8 @@ def read_laliga_values_2016(data_dir: str | Path = "data") -> pd.DataFrame:
     )
     out = out.dropna(subset=["name"])
     return out.sort_values("value_eur", ascending=False).drop_duplicates("name")
+
+
+def read_laliga_values_2016(data_dir: str | Path = "data") -> pd.DataFrame:
+    """Spain only — the original single-league loader, kept for callers that want it."""
+    return read_market_values_2016(data_dir, competitions=(LA_LIGA_TM,))

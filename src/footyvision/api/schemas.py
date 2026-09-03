@@ -112,6 +112,10 @@ class ScoreResponse(BaseModel):
     performance_score: float
     breakdown: list[dict]
     style_profile: dict[str, float]
+    # The finer read: which of the ten side-agnostic roles the numbers look like.
+    predicted_role: str | None = None
+    role_confidence: float | None = None
+    role_profile: dict[str, float] = {}
 
 
 class RankingRow(BaseModel):
@@ -128,12 +132,30 @@ class RankingsResponse(BaseModel):
     results: list[RankingRow]
 
 
+class FeatureImportance(BaseModel):
+    feature: str
+    mean_abs_shap: float
+
+
+class RoleModelInfo(BaseModel):
+    """The ten-role classifier that sits beside the four-group one."""
+
+    classes: list[str]
+    test_accuracy: float
+    n_train: int
+    n_test: int
+
+
 class ModelInfoResponse(BaseModel):
     task: str
     classes: list[str]
     test_accuracy: float
     n_train: int
     n_test: int
+    # Everything the classifier is allowed to see, and which of it actually decides.
+    features: list[str] = []
+    top_features: list[FeatureImportance] = []
+    role_model: RoleModelInfo | None = None
 
 
 class AssistantRequest(BaseModel):
@@ -150,6 +172,9 @@ class AssistantSource(BaseModel):
 class AssistantResponse(BaseModel):
     answer: str
     sources: list[AssistantSource]
+    # The hard requirements read out of the question and applied before ranking, so the
+    # caller can see why a pool was narrowed — null when the question stated none.
+    filters: str | None = None
 
 
 class DistributionPoint(BaseModel):

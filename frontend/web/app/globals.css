@@ -75,6 +75,52 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Pitch markings behind the dashboard: centre circle, halfway line, centre spot.
+
+   Drawn on a real element rather than body::before, and layered explicitly rather than
+   with z-index -1. A negative z-index child of body relies on the body background
+   propagating to the canvas to stay visible, which is exactly the kind of thing that
+   silently paints nothing — it did, twice. Markings sit at 0, .app-container at 1. */
+.pitch-markings {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.pitch-markings::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(48vmin, 560px);
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  border: 3px solid rgba(255, 255, 255, 0.03);
+  border-radius: 50%;
+}
+
+.pitch-markings::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 20px;
+  transform: translateY(-50%);
+  /* Spot first so it paints over the line it sits on; gold is the one marked point. */
+  background:
+    radial-gradient(circle at 50% 50%, rgba(217, 171, 72, 0.1) 0 8px, transparent 8.5px),
+    linear-gradient(
+      to bottom,
+      transparent calc(50% - 1.5px),
+      rgba(255, 255, 255, 0.03) calc(50% - 1.5px),
+      rgba(255, 255, 255, 0.03) calc(50% + 1.5px),
+      transparent calc(50% + 1.5px)
+    );
+}
+
 a {
   color: var(--a);
   text-decoration: none;
@@ -103,6 +149,8 @@ a:hover {
 /* --- Layout Structure -------------------------------------------------------- */
 
 .app-container {
+  position: relative;
+  z-index: 1;
   max-width: 1620px;
   margin: 0 auto;
   padding: 0 20px 50px;
@@ -1296,12 +1344,15 @@ label {
 .rank-badge.top-2 { color: var(--chalk); }
 .rank-badge.top-3 { color: var(--muted); }
 
+/* Selection reads the same everywhere in this dashboard: a lifted green surface with
+   a gold edge, never a solid white pill. Squared off to match the tabs and panels —
+   the round corners were the only fully circular geometry inside a panel. */
 .chip {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--border);
   color: var(--muted);
-  border-radius: 999px;
-  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  padding: 3px 9px;
   font-size: 10.5px;
   font-weight: 600;
   cursor: pointer;
@@ -1309,12 +1360,13 @@ label {
 }
 .chip:hover {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.08);
 }
 .chip.active {
-  color: #000;
-  background: var(--text);
-  border-color: var(--text);
+  background: var(--panel-2);
+  color: var(--text);
+  border-color: rgba(184, 142, 45, 0.4);
+  box-shadow: 0 0 10px rgba(184, 142, 45, 0.15);
 }
 
 .empty-mini-state {
@@ -2249,9 +2301,11 @@ table td,
 
 /* --- surfaces ------------------------------------------------------------ */
 
-/* Flat panels with a painted edge. No blur, no glow: the depth cue is the line. */
+/* Flat panels with a painted edge. No blur, no glow: the depth cue is the line.
+   Translucent so the pitch markings read through them — this rule wins over the earlier
+   .panel block, so it is the one that decides panel opacity. */
 .panel {
-  background: var(--panel);
+  background: rgba(16, 36, 26, 0.62);
   backdrop-filter: none;
   box-shadow: none;
   border: 1px solid var(--border);

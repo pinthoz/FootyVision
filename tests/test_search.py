@@ -5,15 +5,17 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from footyvision.ml.features import PER90_FEATURES, position_group
+from footyvision.ml.features import PER90_FEATURES, load_feature_frame, position_group
 from footyvision.search import nl, query
 from footyvision.search.nl import NLParseError, parse_nl
 from footyvision.search.query import Condition, PlayerQuery, execute_query
 
 
 def test_condition_rejects_unknown_field():
+    # "age" used to be the example here, back when the dataset had no dates of birth.
+    # It is a real field now, so the rejection has to be shown with something else.
     with pytest.raises(ValueError):
-        Condition(field="age", op="lt", value=23)
+        Condition(field="market_value", op="lt", value=23)
 
 
 def test_player_query_rejects_unknown_order_by():
@@ -96,11 +98,117 @@ def test_parse_nl_extracts_fenced_json():
 
 
 def test_parse_nl_rejects_invalid_field():
-    payload = '{"conditions": [{"field": "age", "op": "lt", "value": 23}]}'
+    payload = '{"conditions": [{"field": "market_value", "op": "lt", "value": 23}]}'
     with pytest.raises(NLParseError):
-        parse_nl("under 23", client=_FakeClient(payload))
+        parse_nl("cheap players", client=_FakeClient(payload))
+
+
+def test_parse_nl_accepts_an_age_condition():
+    """This used to be rejected: the dataset had no dates of birth, and now it does."""
+    payload = '{"conditions": [{"field": "age", "op": "lt", "value": 23}]}'
+
+    parsed = parse_nl("under 23", client=_FakeClient(payload))
+
+    assert parsed.conditions[0].field == "age"
+    assert parsed.conditions[0].value == 23
 
 
 def test_extract_json_raises_without_object():
     with pytest.raises(NLParseError):
         nl._extract_json("no json here")
+
+
+# --- age, foot and height --------------------------------------------------------------
+
+
+def _seed_attributes(db_session):
+    """Dates of birth, feet and a season to measure the ages against."""
+    from datetime import date
+
+    from footyvision.db.models import Match, Player, Team
+
+    db_session.add(Team(id=701, name="Home"))
+    db_session.add(Team(id=702, name="Away"))
+    db_session.flush()
+    # A season running Aug 2015 to May 2016: the midpoint lands around Jan 2016.
+    for match_id, when, home, away in (
+        (7001, date(2015, 8, 1), 701, 702),
+        (7002, date(2016, 5, 1), 702, 701),
+    ):
+        db_session.add(
+            Match(
+                id=match_id,
+                competition_id=11,
+                sb_season_id=27,
+                match_date=when,
+                home_team_id=home,
+                away_team_id=away,
+            )
+        )
+    one, two = db_session.get(Player, 1), db_session.get(Player, 2)
+    one.date_of_birth, one.foot, one.height_cm = date(1996, 1, 1), "left", 195.0
+    two.date_of_birth, two.foot, two.height_cm = date(1986, 1, 1), "right", 170.0
+    db_session.commit()
+
+
+def test_age_is_measured_at_the_season_midpoint_not_today(db_session):
+    """A 2015/16 row describes a 2015/16 player; his age today is irrelevant."""
+    _seed_attributes(db_session)
+
+    ages = load_feature_frame(db_session, 600).set_index("player_id")["age"]
+
+    assert ages[1] == pytest.approx(20.0, abs=0.2)
+    assert ages[2] == pytest.approx(30.0, abs=0.2)
+
+
+def test_age_is_nan_without_a_date_of_birth(db_session):
+    _seed_attributes(db_session)
+
+    frame = load_feature_frame(db_session, 600)
+
+    assert frame[frame["player_id"] == 3]["age"].isna().all()
+
+
+def test_age_is_searchable(db_session):
+    """The under-23 filter the roadmap called the biggest unlock."""
+    _seed_attributes(db_session)
+
+    rows = execute_query(
+        db_session, PlayerQuery(conditions=[{"field": "age", "op": "lt", "value": 23}])
+    )
+
+    assert [r["player_id"] for r in rows] == [1]
+
+
+def test_age_condition_excludes_players_without_a_birth_date(db_session):
+    """A missing age must not quietly pass an age filter."""
+    _seed_attributes(db_session)
+
+    rows = execute_query(
+        db_session, PlayerQuery(conditions=[{"field": "age", "op": "gt", "value": 0}])
+    )
+
+    assert {r["player_id"] for r in rows} == {1, 2}
+
+
+def test_foot_filters_as_a_category_not_a_condition(db_session):
+    _seed_attributes(db_session)
+
+    rows = execute_query(db_session, PlayerQuery(foot="left"))
+
+    assert [r["player_id"] for r in rows] == [1]
+
+
+def test_foot_rejects_a_value_that_is_not_a_foot():
+    with pytest.raises(ValueError):
+        PlayerQuery(foot="either")
+
+
+def test_height_is_a_numeric_condition(db_session):
+    _seed_attributes(db_session)
+
+    rows = execute_query(
+        db_session, PlayerQuery(conditions=[{"field": "height_cm", "op": "gte", "value": 190}])
+    )
+
+    assert [r["player_id"] for r in rows] == [1]

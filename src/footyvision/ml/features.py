@@ -7,15 +7,29 @@ group* — comparing a goalkeeper's progressive passes to a winger's is meaningl
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
-from footyvision.db.models import METRIC_COLUMNS, Competition, Player, PlayerSeasonStats
+from footyvision.db.models import (
+    METRIC_COLUMNS,
+    Competition,
+    Match,
+    Player,
+    PlayerSeasonStats,
+)
 
 # The per-90 columns that describe playing style — the similarity feature space.
+# Deliberately closed: similarity and the percentile radars both read this, and a
+# non-style attribute like foot or height has no business shaping "plays like".
 PER90_FEATURES: tuple[str, ...] = tuple(f"{m}_per90" for m in METRIC_COLUMNS)
+
+# Preferred foot, one-hot. Not a style metric, so it stays out of PER90_FEATURES — but
+# it is the one attribute carrying a *side*, which is why the exact-position classifier
+# takes it. See ml/talent.classifier_features for the ablation.
+FOOT_FEATURES: tuple[str, ...] = ("foot_left", "foot_right", "foot_both")
 
 
 def position_group(position: str | None) -> str:
@@ -37,6 +51,44 @@ def position_group(position: str | None) -> str:
     return "MID"
 
 
+def position_role(position: str | None) -> str:
+    """Map a StatsBomb position to a side-agnostic playing role.
+
+    Deliberately drops left/right. The 17 features are all counts — goals, passes,
+    tackles — and carry no lateral information whatsoever, so a left back and a right
+    back are the same point in feature space. Measured: a 23-class model gets the exact
+    label right 39% of the time but the role right 73%, and 56% of its errors are pure
+    left/right swaps.
+
+    Order matters: 'Wing Back' contains 'back' and 'wing', and 'Center Attacking
+    Midfield' contains 'midfield', so the specific tests have to come first.
+    """
+    if not position:
+        return "Unknown"
+    p = position.lower()
+    if "goalkeeper" in p:
+        return "Goalkeeper"
+    if "wing back" in p:
+        return "Wing Back"
+    if "center back" in p:
+        return "Centre Back"
+    if "back" in p:
+        return "Full Back"
+    if "defensive midfield" in p:
+        return "Defensive Midfield"
+    if "attacking midfield" in p:
+        return "Attacking Midfield"
+    if "center midfield" in p:
+        return "Central Midfield"
+    if "midfield" in p:
+        return "Wide Midfield"
+    if "wing" in p:
+        return "Winger"
+    if "forward" in p or "striker" in p:
+        return "Centre Forward"
+    return "Unknown"
+
+
 def load_feature_frame(
     session: Session,
     min_minutes: float | None = None,
@@ -55,6 +107,9 @@ def load_feature_frame(
             PlayerSeasonStats.competition_id,
             Competition.name.label("competition"),
             PlayerSeasonStats.sb_season_id,
+            Player.date_of_birth.label("date_of_birth"),
+            Player.foot.label("foot"),
+            Player.height_cm.label("height_cm"),
             PlayerSeasonStats.primary_position,
             PlayerSeasonStats.matches_played,
             PlayerSeasonStats.minutes,
@@ -74,4 +129,47 @@ def load_feature_frame(
     engine: Engine = session.get_bind()
     frame = pd.read_sql(stmt, engine)
     frame["position_group"] = frame["primary_position"].map(position_group)
+    frame["position_role"] = frame["primary_position"].map(position_role)
+    frame["age"] = _age_at_season(session, frame)
+    # NaN rather than 0 where the foot is unknown: the tree models treat NaN as missing
+    # and route it, whereas a 0 would assert "not left-footed".
+    for column, value in zip(FOOT_FEATURES, ("left", "right", "both"), strict=True):
+        frame[column] = (frame["foot"] == value).astype(float)
+        frame.loc[frame["foot"].isna(), column] = float("nan")
     return frame
+
+
+def _age_at_season(session: Session, frame: pd.DataFrame) -> pd.Series:
+    """Age in years at the midpoint of the season the row belongs to.
+
+    Not age today: a 2015/16 row describes a player as he was then. The reference comes
+    from the fixtures themselves rather than being parsed out of the season name, so it
+    works for "2015/2016" and "2023" alike.
+    """
+    if frame.empty:
+        return pd.Series(dtype=float)
+
+    spans = pd.read_sql(
+        select(
+            Match.competition_id,
+            Match.sb_season_id,
+            func.min(Match.match_date).label("first"),
+            func.max(Match.match_date).label("last"),
+        ).group_by(Match.competition_id, Match.sb_season_id),
+        session.get_bind(),
+    )
+    if spans.empty:
+        return pd.Series(np.nan, index=frame.index)
+
+    spans["first"] = pd.to_datetime(spans["first"])
+    spans["last"] = pd.to_datetime(spans["last"])
+    spans["midpoint"] = spans["first"] + (spans["last"] - spans["first"]) / 2
+
+    merged = frame[["competition_id", "sb_season_id"]].merge(
+        spans[["competition_id", "sb_season_id", "midpoint"]],
+        on=["competition_id", "sb_season_id"],
+        how="left",
+    )
+    dob = pd.to_datetime(frame["date_of_birth"], errors="coerce")
+    years = (merged["midpoint"].to_numpy() - dob.to_numpy()) / np.timedelta64(365, "D")
+    return pd.Series(np.round(years.astype(float), 1), index=frame.index)

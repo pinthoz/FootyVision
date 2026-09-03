@@ -17,11 +17,35 @@ from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 from xgboost import XGBClassifier
 
-from footyvision.ml.features import PER90_FEATURES
+from footyvision.ml.features import FOOT_FEATURES, PER90_FEATURES
 from footyvision.ml.similarity import _target_index
 
 # Position groups the classifier learns (Unknown excluded; tiny classes handled at fit).
 _TRAIN_GROUPS = ("GK", "DEF", "MID", "FWD")
+
+
+def classifier_features(frame: pd.DataFrame, target: str = "position_group") -> list[str]:
+    """Per-90 style metrics, plus preferred foot only where a side is being predicted.
+
+    Foot is the one feature that encodes a side, and the measurements say to use it
+    exactly there and nowhere else:
+
+    | target             | per-90 only | + foot |
+    |--------------------|-------------|--------|
+    | position_group (4) | 0.916       | 0.908  |
+    | position_role (10) | 0.720       | 0.712  |
+    | primary_position   | 0.392       | 0.489  |
+
+    On the side-agnostic targets it is noise and costs accuracy; on the exact position it
+    is worth ten points and cuts pure left/right confusions from 134 errors to 96. Height
+    was ablated the same way and added nothing anywhere, so it is never modelled.
+
+    Frames built by hand in tests have no foot columns, so they are added only if present.
+    """
+    features = list(PER90_FEATURES)
+    if target == "primary_position":
+        features += [c for c in FOOT_FEATURES if c in frame.columns]
+    return features
 
 
 @dataclass
@@ -32,19 +56,37 @@ class TalentModel:
     test_accuracy: float
     n_train: int
     n_test: int
+    target: str = "position_group"
 
 
 def train_position_classifier(
-    frame: pd.DataFrame, test_size: float = 0.25, seed: int = 42
+    frame: pd.DataFrame,
+    test_size: float = 0.25,
+    seed: int = 42,
+    target: str = "position_group",
 ) -> TalentModel:
-    data = frame[frame["position_group"].isin(_TRAIN_GROUPS)].copy()
-    classes = sorted(data["position_group"].unique())
+    """Fit the position classifier at whatever granularity `target` names.
+
+    `position_group` gives the four broad groups; `position_role` gives the ten
+    side-agnostic roles. The exact StatsBomb position is deliberately not shipped as a
+    product surface: see `position_role` in ml/features.py for why its left/right half is
+    not learnable from these features.
+    """
+    data = frame[frame[target] != "Unknown"].copy()
+    if target == "position_group":
+        data = data[data[target].isin(_TRAIN_GROUPS)]
+    # A class with a single example cannot be split into train and test.
+    counts_all = data[target].value_counts()
+    data = data[data[target].isin(counts_all[counts_all >= 2].index)]
+
+    classes = sorted(data[target].unique())
     code = {c: i for i, c in enumerate(classes)}
-    x = data[list(PER90_FEATURES)].to_numpy(dtype=float)
-    y = data["position_group"].map(code).to_numpy()
+    features = classifier_features(data, target)
+    x = data[features].to_numpy(dtype=float)
+    y = data[target].map(code).to_numpy()
 
     # Stratify only if every class has at least two samples.
-    counts = data["position_group"].value_counts()
+    counts = data[target].value_counts()
     stratify = y if counts.min() >= 2 else None
     x_tr, x_te, y_tr, y_te = train_test_split(
         x, y, test_size=test_size, random_state=seed, stratify=stratify
@@ -62,7 +104,7 @@ def train_position_classifier(
     )
     model.fit(x_tr, y_tr)
     acc = float(accuracy_score(y_te, model.predict(x_te)))
-    return TalentModel(model, classes, list(PER90_FEATURES), acc, len(x_tr), len(x_te))
+    return TalentModel(model, classes, features, acc, len(x_tr), len(x_te), target)
 
 
 def style_profile(tm: TalentModel, frame: pd.DataFrame, player_id: int) -> dict[str, float] | None:
@@ -122,3 +164,24 @@ def get_cached_model(frame: pd.DataFrame) -> TalentModel:
     if "model" not in _CACHE:
         _CACHE["model"] = train_position_classifier(frame)
     return _CACHE["model"]
+
+
+def get_cached_role_model(frame: pd.DataFrame) -> TalentModel:
+    """The finer-grained sibling: ten side-agnostic roles instead of four groups."""
+    if "role" not in _CACHE:
+        _CACHE["role"] = train_position_classifier(frame, target="position_role")
+    return _CACHE["role"]
+
+
+# SHAP over the whole frame is not free and the answer does not change while the model is
+# cached, so the ranking is memoised beside it.
+_SHAP_CACHE: dict[str, list[dict[str, Any]]] = {}
+
+
+def get_cached_importance(
+    tm: TalentModel, frame: pd.DataFrame, top_n: int = 5
+) -> list[dict[str, Any]]:
+    key = str(top_n)
+    if key not in _SHAP_CACHE:
+        _SHAP_CACHE[key] = shap_importance(tm, frame, top_n=top_n)
+    return _SHAP_CACHE[key]

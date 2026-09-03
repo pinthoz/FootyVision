@@ -49,14 +49,47 @@ def build_profiles(frame: pd.DataFrame) -> list[dict[str, Any]]:
             strengths = ", ".join(_phrase_with_value(r, f, ranked[f]) for f in ranked.index[:4])
             weakest = ranked.index[-1]
             text = (
-                f"{r['name']} is a {r['primary_position']} ({group}) in {r['competition']}. "
+                f"{r['name']} is a {r['primary_position']} ({group}) in "
+                f"{r['competition']}{_biography(r)}. "
                 f"Playing style: he excels at {strengths}. "
                 f"He is weaker at {_phrase_with_value(r, weakest, ranked[weakest])}. "
                 f"Performance score {r['performance_score']:.0f} out of 100 "
                 f"over {int(r['minutes'])} minutes played."
             )
-            docs.append({"player_id": int(r["player_id"]), "name": r["name"], "text": text})
+            docs.append(
+                {
+                    "player_id": int(r["player_id"]),
+                    "name": r["name"],
+                    "text": text,
+                    # Carried beside the prose so retrieval can filter on them before
+                    # ranking: an embedding is poor at hard constraints, because
+                    # "left-footed" is one token among dozens and never dominates.
+                    "foot": r.get("foot") if isinstance(r.get("foot"), str) else None,
+                    "age": float(r["age"]) if pd.notna(r.get("age")) else float("nan"),
+                    "position_group": group,
+                }
+            )
     return docs
+
+
+def _biography(row: pd.Series) -> str:
+    """ ", 24 years old, left-footed, 1.85m tall" — whichever of the three is known.
+
+    Scouts ask for these constantly ("a young left-footed winger"), and without them in
+    the text the retriever has nothing to match such a question against. Each is optional:
+    roughly a tenth of players have no date of birth or foot on record.
+    """
+    parts: list[str] = []
+    age = row.get("age")
+    if pd.notna(age):
+        parts.append(f"{int(round(float(age)))} years old")
+    foot = row.get("foot")
+    if isinstance(foot, str) and foot:
+        parts.append("two-footed" if foot == "both" else f"{foot}-footed")
+    height = row.get("height_cm")
+    if pd.notna(height):
+        parts.append(f"{float(height) / 100:.2f}m tall")
+    return ", " + ", ".join(parts) if parts else ""
 
 
 def _phrase_with_value(row: pd.Series, feature: str, percentile: float) -> str:

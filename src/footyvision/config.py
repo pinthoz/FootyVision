@@ -33,10 +33,17 @@ class Settings(BaseSettings):
     llm_embed_query_prefix: str = "task: search result | query: "
     llm_api_key: str = "not-needed-for-local"
 
+    # --- Fine-tuned retriever (optional) ---
+    # Path to the sentence-transformers model produced by scripts/finetune_embeddings.py.
+    # When set, BOTH the index and the queries are embedded with it — mixing it with the
+    # stock model would compare vectors from two different spaces. Empty means the app
+    # behaves exactly as before, with no torch dependency at runtime.
+    finetuned_embed_path: str = ""
+
     # --- Cloud LLM (Fallback / Production) ---
     cloud_llm_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
     cloud_llm_model: str = "gemini-2.5-flash"
-    cloud_llm_embed_model: str = "gemini-embedding-2"
+    cloud_llm_embed_model: str = "gemini-embedding-001"
     cloud_llm_api_key: str = ""
     gemini_api_key: str = ""
 

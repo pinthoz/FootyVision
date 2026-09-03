@@ -16,7 +16,7 @@ from rich.table import Table
 
 from footyvision.config import get_settings
 from footyvision.db.base import Base, SessionLocal, engine
-from footyvision.etl import load, statsbomb
+from footyvision.etl import enrich, load, statsbomb
 
 app = typer.Typer(add_completion=False, help="FootyVision ETL & admin CLI.")
 console = Console()
@@ -84,6 +84,39 @@ def aggregate_cmd(
         console.print(f"[green]{written} player-season rows aggregated.[/green]")
 
 
+@app.command("enrich")
+def enrich_cmd(
+    birthdates: bool = typer.Option(True, help="Also match Transfermarkt attributes."),
+) -> None:
+    """Fill nickname/country from lineups, and date of birth, foot and height from Transfermarkt."""
+    with SessionLocal() as session:
+        console.print("[cyan]Reading lineups for nickname and country...[/cyan]")
+
+        def _progress(match_id, seen, pending):
+            if seen % 25 == 0:
+                console.print(f"  {seen} matches read, {pending} players still missing detail")
+
+        stats = enrich.enrich_from_lineups(session, on_match=_progress)
+        console.print(
+            f"[green]{stats['nicknames']} nicknames and {stats['countries']} countries "
+            f"filled from {stats['matches_read']} matches "
+            f"({stats['still_missing']} players still without either).[/green]"
+        )
+
+        if birthdates:
+            console.print("[cyan]Matching dates of birth, foot and height...[/cyan]")
+            dob = enrich.backfill_birthdates(session)
+            console.print(
+                f"[green]{dob['matched']} dates of birth matched; {dob['unmatched']} of "
+                f"{dob['players']} still without one.[/green]"
+            )
+            phys = enrich.backfill_physical(session)
+            console.print(
+                f"[green]{phys['feet']} preferred feet and {phys['heights']} heights "
+                f"matched; {phys['without_foot']} players still without a foot.[/green]"
+            )
+
+
 @app.command("talent-report")
 def talent_report(
     min_minutes: int | None = typer.Option(None, "--min-minutes"),
@@ -124,19 +157,20 @@ def value_report(
     min_minutes: int | None = typer.Option(None, "--min-minutes"),
 ) -> None:
     """Match Transfermarkt 2015/16 values to our players, train LightGBM, print metrics."""
-    from footyvision.etl.transfermarkt import read_laliga_values_2016
+    from footyvision.etl.transfermarkt import read_market_values_2016
     from footyvision.ml.features import PER90_FEATURES, load_feature_frame
     from footyvision.ml.value import bargains, match_values, shap_importance, train_value_model
 
     settings = get_settings()
     mm = settings.min_minutes if min_minutes is None else min_minutes
     console.print("[cyan]Loading Transfermarkt La Liga 2015/16 values...[/cyan]")
-    values = read_laliga_values_2016()
+    values = read_market_values_2016()
     console.print(f"  {len(values)} La Liga players with market values.")
 
     with SessionLocal() as session:
         features = load_feature_frame(session, mm)
-    merged = match_values(features, values, keep_cols=("value_eur", "age"))
+    # Age comes from our own players table now, so only the label is taken from the join.
+    merged = match_values(features, values, keep_cols=("value_eur",))
     console.print(f"[green]Matched {len(merged)}/{len(features)} players to a value.[/green]")
 
     vm = train_value_model(merged, feature_cols=[*PER90_FEATURES, "age"])

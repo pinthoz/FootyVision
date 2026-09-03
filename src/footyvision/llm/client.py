@@ -12,6 +12,7 @@ from typing import Any
 import httpx
 
 from footyvision.config import get_settings
+from footyvision.llm import local_embedder
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +22,11 @@ class LLMError(RuntimeError):
 
 
 class LLMClient:
+    # Which model actually produced the last embeddings. The local->cloud fallback
+    # means this is only knowable after the call, and the index records it so a
+    # later query encoded by a different model can be caught instead of trusted.
+    last_embed_model: str = "unknown"
+
     def __init__(
         self,
         base_url: str | None = None,
@@ -49,7 +55,11 @@ class LLMClient:
 
     def is_local_up(self, timeout: float = 1.5) -> bool:
         """Check if local endpoint is reachable quickly."""
-        if not self.base_url or "localhost" not in self.base_url and "127.0.0.1" not in self.base_url:
+        if (
+            not self.base_url
+            or "localhost" not in self.base_url
+            and "127.0.0.1" not in self.base_url
+        ):
             return False
         try:
             r = httpx.get(f"{self.base_url}/models", timeout=timeout)
@@ -131,7 +141,7 @@ class LLMClient:
         max_tokens: int = 1500,
     ) -> str:
         """Send a system+user prompt, return the assistant's text.
-        
+
         Tries local LLM first; if unreachable and cloud API key is configured,
         seamlessly falls back to the cloud LLM.
         """
@@ -148,7 +158,12 @@ class LLMClient:
                     temperature=temperature,
                     max_tokens=max_tokens,
                 )
-            except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout, httpx.HTTPStatusError) as exc:
+            except (
+                httpx.ConnectError,
+                httpx.ConnectTimeout,
+                httpx.ReadTimeout,
+                httpx.HTTPStatusError,
+            ) as exc:
                 local_exc = exc
                 if not self.cloud_api_key:
                     raise LLMError(
@@ -176,6 +191,7 @@ class LLMClient:
                 local_exc = exc
 
         if self.cloud_api_key:
+            self.last_embed_model = self.cloud_embed_model
             try:
                 return self._post_chat(
                     base_url=self.cloud_base_url,
@@ -187,55 +203,90 @@ class LLMClient:
                     max_tokens=max_tokens,
                 )
             except Exception as exc:
-                raise LLMError(f"Cloud LLM request to {self.cloud_base_url} failed ({exc}).") from exc
+                raise LLMError(
+                    f"Cloud LLM request to {self.cloud_base_url} failed ({exc})."
+                ) from exc
 
         if local_exc:
             raise LLMError(f"LLM request failed ({local_exc}).") from local_exc
         raise LLMError("No LLM endpoint configured or local LLM is unreachable.")
 
-    def _post_embed(self, base_url: str, model: str, api_key: str, texts: list[str]) -> list[list[float]]:
+    def _post_embed(
+        self, base_url: str, model: str, api_key: str, texts: list[str]
+    ) -> list[list[float]]:
         if "generativelanguage.googleapis.com" in base_url:
-            model_clean = model.removeprefix("models/")
-            embed_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_clean}:batchEmbedContents"
-            headers = {"x-goog-api-key": api_key, "Content-Type": "application/json"}
-            requests = [
-                {
-                    "model": f"models/{model_clean}",
-                    "content": {"parts": [{"text": t}]},
-                    "output_dimensionality": 768,
-                }
-                for t in texts
-            ]
-            resp = httpx.post(embed_url, json={"requests": requests}, headers=headers, timeout=self.timeout)
-            resp.raise_for_status()
-            return [item["values"] for item in resp.json()["embeddings"]]
+            candidates = [model, "gemini-embedding-001", "gemini-embedding-2"]
+            last_exc: Exception | None = None
+            for cand in candidates:
+                model_clean = cand.removeprefix("models/")
+                embed_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_clean}:batchEmbedContents"
+                headers = {"x-goog-api-key": api_key, "Content-Type": "application/json"}
+                requests = [
+                    {
+                        "model": f"models/{model_clean}",
+                        "content": {"parts": [{"text": t}]},
+                        "output_dimensionality": 768,
+                    }
+                    for t in texts
+                ]
+                try:
+                    resp = httpx.post(
+                        embed_url, json={"requests": requests}, headers=headers, timeout=self.timeout
+                    )
+                    if resp.status_code == 200:
+                        return [item["values"] for item in resp.json()["embeddings"]]
+                    if resp.status_code == 429:
+                        continue
+                    resp.raise_for_status()
+                except Exception as exc:
+                    last_exc = exc
+                    continue
+            if last_exc:
+                raise last_exc
 
         url = f"{base_url}/embeddings"
         headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-        resp = httpx.post(url, json={"model": model, "input": texts}, headers=headers, timeout=self.timeout)
+        resp = httpx.post(
+            url, json={"model": model, "input": texts}, headers=headers, timeout=self.timeout
+        )
         resp.raise_for_status()
         return [item["embedding"] for item in resp.json()["data"]]
 
     def embed(self, texts: list[str], kind: str = "document") -> list[list[float]]:
         """Return an embedding vector for each input text.
-        
-        Tries local model first with task prefixes; if unreachable, falls back to cloud model.
+
+        A fine-tuned local model wins when one is configured; otherwise the local
+        endpoint is tried first with task prefixes, then the cloud model.
         """
+        prefix = self.embed_query_prefix if kind == "query" else self.embed_document_prefix
+
+        finetuned = get_settings().finetuned_embed_path
+        if local_embedder.is_configured(finetuned):
+            self.last_embed_model = f"finetuned:{finetuned}"
+            return local_embedder.embed(finetuned, texts, prefix)
+
         local_exc: Exception | None = None
         if self.base_url and ("localhost" in self.base_url or "127.0.0.1" in self.base_url):
             try:
-                prefix = self.embed_query_prefix if kind == "query" else self.embed_document_prefix
                 prefixed_texts = [prefix + t for t in texts]
+                self.last_embed_model = self.embed_model
                 return self._post_embed(
                     base_url=self.base_url,
                     model=self.embed_model,
                     api_key=self.api_key,
                     texts=prefixed_texts,
                 )
-            except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout, httpx.HTTPStatusError) as exc:
+            except (
+                httpx.ConnectError,
+                httpx.ConnectTimeout,
+                httpx.ReadTimeout,
+                httpx.HTTPStatusError,
+            ) as exc:
                 local_exc = exc
                 if not self.cloud_api_key:
-                    raise LLMError(f"Local embedding request to {self.base_url} failed ({exc}).") from exc
+                    raise LLMError(
+                        f"Local embedding request to {self.base_url} failed ({exc})."
+                    ) from exc
                 logger.info(
                     "Local embedding unreachable (%s). Falling back to Cloud Embeddings (%s)...",
                     exc,
@@ -262,7 +313,9 @@ class LLMClient:
                     texts=texts,
                 )
             except Exception as exc:
-                raise LLMError(f"Cloud embedding request to {self.cloud_base_url} failed ({exc}).") from exc
+                raise LLMError(
+                    f"Cloud embedding request to {self.cloud_base_url} failed ({exc})."
+                ) from exc
 
         if local_exc:
             raise LLMError(f"Embedding request failed ({local_exc}).") from local_exc

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from footyvision.ml.features import PER90_FEATURES, position_group
 from footyvision.ml.scoring import performance_score, rank_players, score_frame
@@ -78,3 +79,80 @@ def test_classifier_learns_and_profiles_style():
     profile = style_profile(tm, frame, fwd_id)
     assert abs(sum(profile.values()) - 1.0) < 1e-2  # probs are rounded to 3 decimals
     assert max(profile, key=profile.get) == "FWD"
+
+
+# --- side-agnostic roles ---------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("position", "expected"),
+    [
+        ("Goalkeeper", "Goalkeeper"),
+        ("Left Center Back", "Centre Back"),
+        ("Right Center Back", "Centre Back"),
+        ("Left Back", "Full Back"),
+        # 'Wing Back' contains both 'back' and 'wing'; it must not fall through to either.
+        ("Left Wing Back", "Wing Back"),
+        ("Center Defensive Midfield", "Defensive Midfield"),
+        # 'Attacking Midfield' contains 'midfield'; the specific test has to win.
+        ("Center Attacking Midfield", "Attacking Midfield"),
+        ("Left Center Midfield", "Central Midfield"),
+        ("Left Midfield", "Wide Midfield"),
+        ("Right Wing", "Winger"),
+        ("Left Center Forward", "Centre Forward"),
+        (None, "Unknown"),
+    ],
+)
+def test_position_role_drops_the_side_but_keeps_the_role(position, expected):
+    from footyvision.ml.features import position_role
+
+    assert position_role(position) == expected
+
+
+def test_position_role_is_side_agnostic_by_construction():
+    """Mirror-image positions land on the same role: the metrics carry no side."""
+    from footyvision.ml.features import position_role
+
+    for left, right in [
+        ("Left Back", "Right Back"),
+        ("Left Center Back", "Right Center Back"),
+        ("Left Wing", "Right Wing"),
+        ("Left Wing Back", "Right Wing Back"),
+    ]:
+        assert position_role(left) == position_role(right)
+
+
+def test_foot_is_used_only_where_a_side_is_being_predicted():
+    """Foot is a laterality signal: useful for the exact position, noise for the rest.
+
+    Measured on the real pool it takes the exact position from 0.392 to 0.489, while
+    costing accuracy on the side-agnostic targets (0.916 -> 0.908, 0.720 -> 0.712).
+    """
+    from footyvision.ml.features import FOOT_FEATURES
+    from footyvision.ml.talent import classifier_features
+
+    frame = _synthetic()
+    for column in FOOT_FEATURES:
+        frame[column] = 0.0
+
+    assert classifier_features(frame, "position_group") == list(PER90_FEATURES)
+    assert classifier_features(frame, "position_role") == list(PER90_FEATURES)
+    assert classifier_features(frame, "primary_position") == [*PER90_FEATURES, *FOOT_FEATURES]
+
+
+def test_classifier_features_tolerate_a_frame_without_foot_columns():
+    """Hand-built frames (and any pool loaded before the column existed) have no foot."""
+    from footyvision.ml.talent import classifier_features
+
+    assert classifier_features(_synthetic(), "primary_position") == list(PER90_FEATURES)
+
+
+def test_height_is_never_a_model_feature():
+    """Height is a scouting attribute; ablation showed it adds nothing to prediction."""
+    from footyvision.ml.talent import classifier_features
+
+    frame = _synthetic()
+    frame["height_cm"] = 180.0
+
+    for target in ("position_group", "position_role", "primary_position"):
+        assert "height_cm" not in classifier_features(frame, target)

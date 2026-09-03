@@ -30,6 +30,22 @@ _SEED = [
 ]
 
 
+@pytest.fixture(autouse=True)
+def _clear_model_cache():
+    """The trained models are memoised per process, so tests would share one another's.
+
+    The same cache is why the running API has to be restarted after loading a season:
+    it keeps serving the model it fitted on the smaller pool.
+    """
+    from footyvision.ml.talent import _CACHE, _SHAP_CACHE
+
+    _CACHE.clear()
+    _SHAP_CACHE.clear()
+    yield
+    _CACHE.clear()
+    _SHAP_CACHE.clear()
+
+
 @pytest.fixture
 def db_session() -> Session:
     """A seeded in-memory database session."""

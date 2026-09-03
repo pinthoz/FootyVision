@@ -32,6 +32,9 @@ export type Score = {
   performance_score: number;
   style_profile: Record<string, number>;
   breakdown: { metric: string; weight: number; percentile: number; contribution: number }[];
+  predicted_role: string | null;
+  role_confidence: number | null;
+  role_profile: Record<string, number>;
 };
 
 export type RankingRow = {
@@ -54,7 +57,14 @@ export type ModelInfoResponse = {
   test_accuracy: number;
   n_train: number;
   n_test: number;
+  features?: string[];
   top_features?: TopFeature[];
+  role_model: {
+    classes: string[];
+    test_accuracy: number;
+    n_train: number;
+    n_test: number;
+  } | null;
 };
 
 export type DistributionPoint = { player_id: number; name: string; value: number };
@@ -78,6 +88,7 @@ export type SearchRow = {
 export type AssistantResult = {
   answer: string;
   sources: { player_id: number; name: string; score?: number }[];
+  filters?: string | null;
 };
 
 async function get<T>(path: string): Promise<T> {
@@ -98,7 +109,7 @@ export const api = {
   searchPlayers: (q: string) => {
     const term = q.trim();
     const queryParam = term ? `search=${encodeURIComponent(term)}&` : "";
-    return get<Player[]>(`/players?${queryParam}with_stats=true&limit=40`);
+    return get<Player[]>(`/players?${queryParam}with_stats=true&limit=200`);
   },
   radar: (id: number) => get<Radar>(`/players/${id}/radar`),
   similar: (id: number) =>

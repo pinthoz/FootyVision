@@ -6,13 +6,19 @@ from sqlalchemy.orm import Session
 from footyvision.api.schemas import (
     ModelInfoResponse,
     RankingsResponse,
+    RoleModelInfo,
     ScoreResponse,
 )
 from footyvision.config import get_settings
 from footyvision.db.base import get_session
 from footyvision.ml.features import load_feature_frame
 from footyvision.ml.scoring import performance_score, rank_players
-from footyvision.ml.talent import get_cached_model, style_profile
+from footyvision.ml.talent import (
+    get_cached_importance,
+    get_cached_model,
+    get_cached_role_model,
+    style_profile,
+)
 
 router = APIRouter(tags=["talent"])
 
@@ -34,7 +40,17 @@ def player_score(
     if score is None:
         raise HTTPException(status_code=404, detail="Player not found in the feature pool.")
     profile = style_profile(get_cached_model(frame), frame, player_id) or {}
-    return ScoreResponse(**score, style_profile=profile)
+    roles = style_profile(get_cached_role_model(frame), frame, player_id) or {}
+    best_role, confidence = (None, None)
+    if roles:
+        best_role, confidence = max(roles.items(), key=lambda kv: kv[1])
+    return ScoreResponse(
+        **score,
+        style_profile=profile,
+        predicted_role=best_role,
+        role_confidence=confidence,
+        role_profile=roles,
+    )
 
 
 @router.get("/rankings", response_model=RankingsResponse)
@@ -54,12 +70,22 @@ def rankings(
 def model_info(
     min_minutes: float | None = Query(None), session: Session = Depends(get_session)
 ) -> ModelInfoResponse:
-    """Evaluation of the XGBoost position classifier (honest held-out accuracy)."""
-    tm = get_cached_model(_frame(session, min_minutes))
+    """Evaluation of the position classifiers (honest held-out accuracy, both grains)."""
+    frame = _frame(session, min_minutes)
+    tm = get_cached_model(frame)
+    rm = get_cached_role_model(frame)
     return ModelInfoResponse(
         task="position-group classification",
         classes=tm.classes,
         test_accuracy=round(tm.test_accuracy, 3),
         n_train=tm.n_train,
         n_test=tm.n_test,
+        features=tm.features,
+        top_features=get_cached_importance(tm, frame),
+        role_model=RoleModelInfo(
+            classes=rm.classes,
+            test_accuracy=round(rm.test_accuracy, 3),
+            n_train=rm.n_train,
+            n_test=rm.n_test,
+        ),
     )

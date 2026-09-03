@@ -31,7 +31,11 @@ export default function RootLayout({
     // suppressHydrationWarning: browser extensions inject attributes (e.g. theme/dark-mode)
     // onto <html>/<body> before React hydrates; ignore those benign attribute mismatches.
     <html lang="en" className={`${display.variable} ${body.variable}`} suppressHydrationWarning>
-      <body suppressHydrationWarning>{children}</body>
+      <body suppressHydrationWarning>
+        {/* Decorative pitch markings behind the dashboard. */}
+        <div className="pitch-markings" aria-hidden="true" />
+        {children}
+      </body>
     </html>
   );
 }

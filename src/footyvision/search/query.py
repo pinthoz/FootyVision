@@ -14,9 +14,15 @@ from sqlalchemy.orm import Session
 
 from footyvision.ml.features import PER90_FEATURES, load_feature_frame
 
-# Fields a query is allowed to filter or sort on. Note: the dataset has no age/DOB,
-# so age-based queries (e.g. "under 23") cannot be answered — the LLM is told this.
-SEARCHABLE_FIELDS: frozenset[str] = frozenset(PER90_FEATURES) | {"minutes", "matches_played"}
+# Fields a query is allowed to filter or sort on. `age` is the player's age at the
+# midpoint of the season the row describes, not today — a 2015/16 row is a 2015/16
+# player. Rows without a date of birth carry NaN and are excluded by any age condition.
+SEARCHABLE_FIELDS: frozenset[str] = frozenset(PER90_FEATURES) | {
+    "minutes",
+    "matches_played",
+    "age",
+    "height_cm",
+}
 
 Operator = Literal["gt", "gte", "lt", "lte", "eq"]
 _OPS = {
@@ -43,6 +49,8 @@ class Condition(BaseModel):
 
 class PlayerQuery(BaseModel):
     position_group: Literal["GK", "DEF", "MID", "FWD"] | None = None
+    # Categorical, so it is an equality filter rather than a numeric condition.
+    foot: Literal["left", "right", "both"] | None = None
     competition: str | None = Field(None, description="Substring matched against league name.")
     min_minutes: float | None = None
     conditions: list[Condition] = Field(default_factory=list)
@@ -77,6 +85,8 @@ def execute_query(session: Session, query: PlayerQuery) -> list[dict[str, Any]]:
         frame = frame[frame["competition"].str.contains(query.competition, case=False, na=False)]
     if query.position_group:
         frame = frame[frame["position_group"] == query.position_group]
+    if query.foot:
+        frame = frame[frame["foot"] == query.foot]
     for cond in query.conditions:
         frame = frame[_OPS[cond.op](frame[cond.field], cond.value)]
 
