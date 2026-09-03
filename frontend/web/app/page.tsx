@@ -9,6 +9,7 @@ import PlayerAvatar from "./components/PlayerAvatar";
 import { getCleanPlayerName } from "./lib/photos";
 import Markdown from "./components/Markdown";
 import Logo from "./components/Logo";
+import DataCoverage from "./components/DataCoverage";
 import MetricDistribution from "./components/MetricDistribution";
 import MetricScatter from "./components/MetricScatter";
 import Bars, { Bar } from "./components/Bars";
@@ -233,6 +234,8 @@ export default function Home() {
         </div>
 
         <div className="header-meta">
+          <DataCoverage />
+
           <div className="active-target-pill">
             <span className="muted-text">Target Slot:</span>
             <button

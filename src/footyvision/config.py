@@ -33,6 +33,21 @@ class Settings(BaseSettings):
     llm_embed_query_prefix: str = "task: search result | query: "
     llm_api_key: str = "not-needed-for-local"
 
+    # --- Cloud LLM (Fallback / Production) ---
+    cloud_llm_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
+    cloud_llm_model: str = "gemini-2.5-flash"
+    cloud_llm_embed_model: str = "gemini-embedding-2"
+    cloud_llm_api_key: str = ""
+    gemini_api_key: str = ""
+
+    @property
+    def active_cloud_api_key(self) -> str:
+        return (
+            self.gemini_api_key
+            or self.cloud_llm_api_key
+            or (self.llm_api_key if self.llm_api_key != "not-needed-for-local" else "")
+        )
+
     @property
     def sqlalchemy_url(self) -> str:
         if self.database_url:

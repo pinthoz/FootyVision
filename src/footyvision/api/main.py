@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from footyvision import __version__
 from footyvision.api.routers import (
     assistant,
+    coverage,
     health,
     metrics,
     players,
@@ -30,6 +31,7 @@ app.add_middleware(
 )
 
 app.include_router(health.router)
+app.include_router(coverage.router)
 app.include_router(players.router)
 app.include_router(similarity.router)
 app.include_router(reports.router)

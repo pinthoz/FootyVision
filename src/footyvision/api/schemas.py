@@ -165,3 +165,39 @@ class DistributionResponse(BaseModel):
     position_group: str | None
     count: int
     values: list[DistributionPoint]
+
+
+class CoverageSeason(BaseModel):
+    competition_id: int
+    competition: str
+    country: str | None
+    season_id: int
+    season: str
+    matches: int
+    teams: int
+    players: int
+    coverage: float
+    complete: bool
+
+
+class CatalogueEntry(BaseModel):
+    competition_id: int
+    season_id: int
+    competition: str
+    country: str | None
+    season: str
+    matches: int
+    teams: int
+    gender: str
+    kind: str
+    complete: bool
+    loaded: bool
+
+
+class CoverageResponse(BaseModel):
+    competitions: int
+    matches: int
+    players: int
+    seasons: list[CoverageSeason]
+    catalogue: list[CatalogueEntry]
+    catalogue_verified: str

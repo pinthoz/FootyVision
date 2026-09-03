@@ -43,12 +43,18 @@ export type RankingRow = {
   performance_score: number;
 };
 
+export type TopFeature = {
+  feature: string;
+  mean_abs_shap: number;
+};
+
 export type ModelInfoResponse = {
   task: string;
   classes: string[];
   test_accuracy: number;
   n_train: number;
   n_test: number;
+  top_features?: TopFeature[];
 };
 
 export type DistributionPoint = { player_id: number; name: string; value: number };
@@ -123,6 +129,43 @@ export const api = {
       status: r.status,
       data: r.ok ? ((await r.json()) as AssistantResult) : null,
     })),
+  coverage: () => get<Coverage>("/coverage"),
+};
+
+export type CoverageSeason = {
+  competition_id: number;
+  competition: string;
+  country: string | null;
+  season_id: number;
+  season: string;
+  matches: number;
+  teams: number;
+  players: number;
+  coverage: number;
+  complete: boolean;
+};
+
+export type CatalogueEntry = {
+  competition_id: number;
+  season_id: number;
+  competition: string;
+  country: string | null;
+  season: string;
+  matches: number;
+  teams: number;
+  gender: string;
+  kind: string;
+  complete: boolean;
+  loaded: boolean;
+};
+
+export type Coverage = {
+  competitions: number;
+  matches: number;
+  players: number;
+  seasons: CoverageSeason[];
+  catalogue: CatalogueEntry[];
+  catalogue_verified: string;
 };
 
 export type MetricCategory = "all" | "attack" | "passing" | "defense";
