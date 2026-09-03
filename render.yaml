@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: footyvision-api
+    runtime: python
+    plan: free
+    region: frankfurt
+    buildCommand: pip install -U pip && pip install -e .
+    startCommand: uvicorn footyvision.api.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: DATABASE_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: CLOUD_LLM_BASE_URL
+        value: https://generativelanguage.googleapis.com/v1beta/openai
+      - key: CLOUD_LLM_MODEL
+        value: gemini-2.5-flash
+      - key: CLOUD_LLM_EMBED_MODEL
+        value: gemini-embedding-2

@@ -1,6 +1,8 @@
 <div align="center">
 
-# FootyVision ⚽
+<img src="docs/images/logo.svg" alt="FootyVision" width="110" height="110">
+
+# FootyVision
 
 **An AI football scouting platform — the models do the maths, the LLM explains them.**
 
