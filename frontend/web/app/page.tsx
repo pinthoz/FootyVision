@@ -282,6 +282,7 @@ export default function Home() {
         {/* Col 1: Player A Card */}
         <div className="command-col-slot">
           <PlayerCard
+          modelInfo={modelInfo}
             slotId="A"
             slot={a}
             isActive={activeSlot === "A"}
@@ -405,6 +406,7 @@ export default function Home() {
         {/* Col 3: Player B Card */}
         <div className="command-col-slot">
           <PlayerCard
+          modelInfo={modelInfo}
             slotId="B"
             slot={b}
             isActive={activeSlot === "B"}
@@ -1134,23 +1136,11 @@ function Assistant({
           onKeyDown={(e) => e.key === "Enter" && ask()}
         />
         <button
-          className={`action-btn primary-btn ${busy ? "is-busy" : ""}`}
+          className="action-btn primary-btn"
           onClick={() => ask()}
           disabled={busy}
         >
-          {busy ? (
-            <>
-              <SoccerBall size={14} mode="spin" />
-              Thinking
-              <span className="busy-dots">
-                <span />
-                <span />
-                <span />
-              </span>
-            </>
-          ) : (
-            "Ask"
-          )}
+          Ask
         </button>
       </div>
 
@@ -1276,23 +1266,11 @@ function NLSearch({
           onKeyDown={(e) => e.key === "Enter" && run()}
         />
         <button
-          className={`action-btn primary-btn ${busy ? "is-busy" : ""}`}
+          className="action-btn primary-btn"
           onClick={run}
           disabled={busy}
         >
-          {busy ? (
-            <>
-              <SoccerBall size={14} mode="spin" />
-              Filtering
-              <span className="busy-dots">
-                <span />
-                <span />
-                <span />
-              </span>
-            </>
-          ) : (
-            "Run Query"
-          )}
+          Run Query
         </button>
       </div>
 
@@ -1403,23 +1381,11 @@ function Report({
 
       <div className="report-actions-row">
         <button
-          className={`action-btn primary-btn ${busy ? "is-busy" : ""}`}
+          className="action-btn primary-btn"
           onClick={generate}
           disabled={!targetPlayer || busy}
         >
-          {busy ? (
-            <>
-              <SoccerBall size={14} mode="spin" />
-              Generating Dossier
-              <span className="busy-dots">
-                <span />
-                <span />
-                <span />
-              </span>
-            </>
-          ) : (
-            `Generate report${targetPlayer ? ` for ${targetPlayer.name}` : ""}`
-          )}
+          {`Generate report${targetPlayer ? ` for ${targetPlayer.name}` : ""}`}
         </button>
       </div>
 
