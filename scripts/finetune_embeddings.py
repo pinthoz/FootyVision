@@ -152,7 +152,7 @@ STYLE_PHRASES = {
     "dribbles_per90": "taking opponents on",
     "dribbles_completed_per90": "beating defenders with dribbles",
     "carries_per90": "carrying the ball",
-    "progressive_carries_per90": "driving forward with the ball at his feet",
+    "progressive_carries_per90": "driving forward with the ball",
     "tackles_per90": "winning tackles",
     "interceptions_per90": "reading the game and intercepting passes",
     "blocks_per90": "blocking shots and passes",
@@ -180,7 +180,7 @@ def load_frame(min_minutes: int) -> pd.DataFrame:
     sql = f"""
         SELECT s.player_id, p.name, p.foot, p.date_of_birth, p.height_cm,
                s.primary_position, s.minutes, s.competition_id, s.sb_season_id,
-               c.name AS competition, {columns}
+               c.name AS competition, c.gender, {columns}
         FROM player_season_stats s
         JOIN players p ON p.id = s.player_id
         JOIN competitions c ON c.id = s.competition_id
@@ -243,7 +243,7 @@ def build_profiles(frame: pd.DataFrame) -> tuple[dict[int, str], dict]:
             biography = ", " + ", ".join(bio) if bio else ""
             profiles[int(row["player_id"])] = (
                 f"{row['name']} is a {row['primary_position']} ({group}) in "
-                f"{row['competition']}{biography}. Playing style: he excels at {strengths}. "
+                f"{row['competition']}{biography}. Playing style: excels at {strengths}. "
                 f"Played {int(row['minutes'])} minutes."
             )
     return profiles, ranks
