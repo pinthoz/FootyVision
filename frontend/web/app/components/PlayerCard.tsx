@@ -7,6 +7,7 @@ import {
   Player,
   Radar as RadarData,
   Score,
+  formatCountry,
   getMetricLabel,
 } from "../lib/api";
 import { FEATURED_PLAYERS } from "./PlayerPickerModal";
@@ -322,6 +323,9 @@ export default function PlayerCard({
           <h3 className="slot-name" title={player.name}>{player.name}</h3>
           <div className="slot-meta">
             {radar.position_group} · {Math.round(radar.minutes)} min
+            {/* Nationality was null for every player in the women's leagues until the
+                lineup feed was read for them, so this line used to be men-only. */}
+            {formatCountry(player.country) && <> · {formatCountry(player.country)}</>}
           </div>
         </div>
       </div>

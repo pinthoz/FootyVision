@@ -253,6 +253,19 @@ export const RADAR_PRESETS: { id: string; label: string; axes: [string, string][
 
 export const RADAR_AXES: [string, string][] = RADAR_PRESETS[0].axes;
 
+/** The country as a scout would write it, not as the source stores it.
+
+    StatsBomb spells a handful of these out in full — "Venezuela (Bolivarian Republic)",
+    "Macedonia, Republic of" — and one of them carries a non-breaking space. The
+    parenthetical and the appended qualifier are bureaucratic form, never the part a
+    reader needs, so both are dropped; only the United States is short enough to be worth
+    a special case. */
+export function formatCountry(country: string | null): string | null {
+  if (!country) return null;
+  const trimmed = country.split("(")[0].split(",")[0].replace(/\s+/g, " ").trim();
+  return trimmed === "United States of America" ? "USA" : trimmed || null;
+}
+
 export function getMetricLabel(metricKey: string): string {
   const found = ALL_METRICS.find((m) => m.key === metricKey);
   if (found) return found.label;
