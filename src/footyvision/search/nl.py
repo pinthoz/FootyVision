@@ -29,6 +29,7 @@ def build_nl_prompt(text: str) -> tuple[str, str]:
         '  "position_group": one of "GK"|"DEF"|"MID"|"FWD" or null,\n'
         '  "foot": one of "left"|"right"|"both" or null,\n'
         '  "competition": league-name substring or null,\n'
+        '  "nationality": player country-name substring or null,\n'
         '  "min_minutes": number or null,\n'
         '  "conditions": [{"field": <field>, "op": "gt"|"gte"|"lt"|"lte"|"eq", "value": number}],\n'
         '  "order_by": <field> or null,\n'
@@ -39,6 +40,10 @@ def build_nl_prompt(text: str) -> tuple[str, str]:
         "Preferred foot is the top-level 'foot' key, never a condition: "
         '\'left-footed wingers\' sets "foot": "left". Height in centimetres is the '
         "'height_cm' field, so 'taller than 190cm' is a condition on it.\n"
+        "'nationality' is the player's own country and 'competition' is the league, which "
+        "are not the same thing: 'Brazilians in La Liga' sets both. Give nationality as the "
+        'country name in English ("Brazil", not "Brazilian"), because it is matched as a '
+        "substring of the stored country.\n"
         "Age IS available as the 'age' field, in years at the middle of the season: "
         '\'under 23\' becomes {"field": "age", "op": "lt", "value": 23} and '
         "'over 30' uses op 'gt'. Map metric names to the closest allowed field "

@@ -199,6 +199,27 @@ def test_foot_filters_as_a_category_not_a_condition(db_session):
     assert [r["player_id"] for r in rows] == [1]
 
 
+def test_nationality_filters_on_the_player_not_the_league(db_session):
+    """A Brazilian in La Liga has two countries, and this filter means the first one.
+
+    Matched as a substring because the source spells some of them out in full —
+    "Venezuela (Bolivarian Republic)" — and a caller should not have to know that.
+    """
+    from footyvision.db.models import Player
+
+    db_session.get(Player, 1).country = "Brazil"
+    db_session.get(Player, 2).country = "Venezuela\xa0(Bolivarian Republic)"
+    db_session.commit()
+
+    assert [
+        r["player_id"] for r in execute_query(db_session, PlayerQuery(nationality="Brazil"))
+    ] == [1]
+    assert [
+        r["player_id"] for r in execute_query(db_session, PlayerQuery(nationality="venezuela"))
+    ] == [2]
+    assert execute_query(db_session, PlayerQuery(nationality="Portugal")) == []
+
+
 def test_foot_rejects_a_value_that_is_not_a_foot():
     with pytest.raises(ValueError):
         PlayerQuery(foot="either")

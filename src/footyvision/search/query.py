@@ -52,6 +52,12 @@ class PlayerQuery(BaseModel):
     # Categorical, so it is an equality filter rather than a numeric condition.
     foot: Literal["left", "right", "both"] | None = None
     competition: str | None = Field(None, description="Substring matched against league name.")
+    # The player's own country, not the league's. Matched as a substring so "Venezuela"
+    # finds "Venezuela (Bolivarian Republic)" and the caller need not know how the source
+    # spells it. Unlike foot and age it is recorded for every player in the pool.
+    nationality: str | None = Field(
+        None, description="Substring matched against the player's country."
+    )
     min_minutes: float | None = None
     conditions: list[Condition] = Field(default_factory=list)
     order_by: str | None = None
@@ -87,6 +93,10 @@ def execute_query(session: Session, query: PlayerQuery) -> list[dict[str, Any]]:
         frame = frame[frame["position_group"] == query.position_group]
     if query.foot:
         frame = frame[frame["foot"] == query.foot]
+    if query.nationality:
+        frame = frame[
+            frame["nationality"].str.contains(query.nationality, case=False, na=False)
+        ]
     for cond in query.conditions:
         frame = frame[_OPS[cond.op](frame[cond.field], cond.value)]
 
@@ -110,6 +120,7 @@ def execute_query(session: Session, query: PlayerQuery) -> list[dict[str, Any]]:
                 "competition": r["competition"],
                 "primary_position": r["primary_position"],
                 "position_group": r["position_group"],
+                "nationality": r.get("nationality"),
                 "stats": {f: round(float(r[f]), 3) for f in sorted(referenced)},
             }
         )
