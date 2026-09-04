@@ -3272,3 +3272,164 @@ table td,
   100% { background-position: -200% 0; }
 }
 
+/* ============================================================================= */
+/* SOCCER CLEAT JUGGLING ANIMATION (CHUTEIRA A DAR TOQUES NA BOLA)               */
+/* ============================================================================= */
+
+.juggling-scene {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  position: relative;
+  flex-shrink: 0;
+  overflow: visible;
+}
+
+/* 1. Ball Juggling Flight */
+.juggling-ball-anchor {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  animation: juggleBallFlight 1.1s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite;
+}
+
+.juggling-ball-anchor .soccer-ball-svg {
+  animation: juggleBallSpin 1.1s linear infinite;
+}
+
+@keyframes juggleBallFlight {
+  0% {
+    /* Touch point with cleat */
+    transform: translate(-10%, 28px) scale(0.92, 1.08);
+  }
+  12% {
+    /* Fast upward pop */
+    transform: translate(-5%, 8px) scale(1.06, 0.94);
+  }
+  45% {
+    /* Apex in the air */
+    transform: translate(0%, -24px) scale(1, 1);
+  }
+  80% {
+    /* Gravity falling down */
+    transform: translate(-6%, 12px) scale(0.98, 1.02);
+  }
+  100% {
+    /* Back to contact */
+    transform: translate(-10%, 28px) scale(0.92, 1.08);
+  }
+}
+
+@keyframes juggleBallSpin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* 2. Impact Flash Ring at Contact */
+.juggling-impact-ring {
+  position: absolute;
+  bottom: 22px;
+  left: 42%;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--a, #eab308);
+  box-shadow: 0 0 10px var(--a, #eab308);
+  transform: translate(-50%, 50%) scale(0);
+  opacity: 0;
+  z-index: 2;
+  pointer-events: none;
+  animation: juggleImpactPulse 1.1s cubic-bezier(0.1, 0.8, 0.3, 1) infinite;
+}
+
+@keyframes juggleImpactPulse {
+  0% {
+    transform: translate(-50%, 50%) scale(0.4);
+    opacity: 0.95;
+  }
+  18% {
+    transform: translate(-50%, 50%) scale(1.8);
+    opacity: 0;
+  }
+  100% {
+    transform: translate(-50%, 50%) scale(0.4);
+    opacity: 0;
+  }
+}
+
+/* 3. The Soccer Cleat (Chuteira) */
+.juggling-boot-anchor {
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  transform-origin: 20% 80%;
+  transform: translateX(-50%);
+  z-index: 2;
+  animation: juggleBootKick 1.1s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite;
+}
+
+.cleat-svg {
+  display: block;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.45));
+}
+
+@keyframes juggleBootKick {
+  0% {
+    /* Upward flick / toque strike! */
+    transform: translateX(-50%) translateY(-7px) rotate(-16deg);
+  }
+  15% {
+    /* Peak follow-through */
+    transform: translateX(-50%) translateY(-5px) rotate(-12deg);
+  }
+  42% {
+    /* Recovery drop */
+    transform: translateX(-50%) translateY(2px) rotate(2deg);
+  }
+  78% {
+    /* Waiting down on ground */
+    transform: translateX(-50%) translateY(4px) rotate(0deg);
+  }
+  94% {
+    /* Coiling before touch */
+    transform: translateX(-50%) translateY(1px) rotate(-4deg);
+  }
+  100% {
+    /* The kick strike! */
+    transform: translateX(-50%) translateY(-7px) rotate(-16deg);
+  }
+}
+
+/* 4. Ground Shadow */
+.juggling-ground-shadow {
+  position: absolute;
+  bottom: 0px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 44px;
+  height: 5px;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 50%;
+  filter: blur(1.5px);
+  animation: juggleGroundShadow 1.1s ease-in-out infinite;
+}
+
+@keyframes juggleGroundShadow {
+  0%, 100% {
+    transform: translateX(-50%) scale(0.85);
+    opacity: 0.5;
+  }
+  12% {
+    transform: translateX(-50%) scale(1.15);
+    opacity: 0.85;
+  }
+  45% {
+    transform: translateX(-50%) scale(0.95);
+    opacity: 0.6;
+  }
+}
+
+

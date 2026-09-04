@@ -10,6 +10,7 @@ import { getCleanPlayerName } from "./lib/photos";
 import Markdown from "./components/Markdown";
 import Logo from "./components/Logo";
 import SoccerBall from "./components/SoccerBall";
+import JugglingBoot from "./components/JugglingBoot";
 import DataCoverage from "./components/DataCoverage";
 import MetricDistribution from "./components/MetricDistribution";
 import MetricScatter from "./components/MetricScatter";
@@ -1171,7 +1172,7 @@ function Assistant({
 
       {busy && (
         <div className="ai-thinking-state">
-          <SoccerBall size={22} mode="bounce" glow={true} />
+          <JugglingBoot scale={0.72} />
           <div className="ai-thinking-text">
             <div className="ai-thinking-title">
               Scout AI is analyzing
@@ -1297,7 +1298,7 @@ function NLSearch({
 
       {busy && (
         <div className="ai-thinking-state filter-state">
-          <SoccerBall size={22} mode="bounce" glow={true} />
+          <JugglingBoot scale={0.72} />
           <div className="ai-thinking-text">
             <div className="ai-thinking-title">
               Filtering Player Pool
@@ -1429,14 +1430,17 @@ function Report({
               <SoccerBall size={12} mode="spin" />
               AI SCOUT ENGINE ACTIVE
             </div>
-            <span className="report-gen-target">
-              Synthesizing tactical dossier for <strong>{targetPlayer?.name}</strong>
-              <span className="busy-dots">
-                <span />
-                <span />
-                <span />
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <JugglingBoot scale={0.55} />
+              <span className="report-gen-target">
+                Synthesizing tactical dossier for <strong>{targetPlayer?.name}</strong>
+                <span className="busy-dots">
+                  <span />
+                  <span />
+                  <span />
+                </span>
               </span>
-            </span>
+            </div>
           </div>
 
           <div className="tactical-pass-lane">
