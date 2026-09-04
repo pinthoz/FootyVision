@@ -9,6 +9,7 @@ import PlayerAvatar from "./components/PlayerAvatar";
 import { getCleanPlayerName } from "./lib/photos";
 import Markdown from "./components/Markdown";
 import Logo from "./components/Logo";
+import SoccerBall from "./components/SoccerBall";
 import DataCoverage from "./components/DataCoverage";
 import MetricDistribution from "./components/MetricDistribution";
 import MetricScatter from "./components/MetricScatter";
@@ -1138,7 +1139,7 @@ function Assistant({
         >
           {busy ? (
             <>
-              <span className="btn-spinner" />
+              <SoccerBall size={14} mode="spin" />
               Thinking
               <span className="busy-dots">
                 <span />
@@ -1170,10 +1171,10 @@ function Assistant({
 
       {busy && (
         <div className="ai-thinking-state">
-          <div className="ai-pulse-orb" />
+          <SoccerBall size={22} mode="bounce" glow={true} />
           <div className="ai-thinking-text">
             <div className="ai-thinking-title">
-              Scout AI is thinking
+              Scout AI is analyzing
               <span className="busy-dots">
                 <span />
                 <span />
@@ -1280,7 +1281,7 @@ function NLSearch({
         >
           {busy ? (
             <>
-              <span className="btn-spinner" />
+              <SoccerBall size={14} mode="spin" />
               Filtering
               <span className="busy-dots">
                 <span />
@@ -1296,7 +1297,7 @@ function NLSearch({
 
       {busy && (
         <div className="ai-thinking-state filter-state">
-          <div className="ai-pulse-orb filter-orb" />
+          <SoccerBall size={22} mode="bounce" glow={true} />
           <div className="ai-thinking-text">
             <div className="ai-thinking-title">
               Filtering Player Pool
@@ -1407,7 +1408,7 @@ function Report({
         >
           {busy ? (
             <>
-              <span className="btn-spinner" />
+              <SoccerBall size={14} mode="spin" />
               Generating Dossier
               <span className="busy-dots">
                 <span />
@@ -1425,11 +1426,11 @@ function Report({
         <div className="report-generating-card">
           <div className="report-gen-header">
             <div className="report-badge-pulsing">
-              <span className="pulsing-radar-dot" />
+              <SoccerBall size={12} mode="spin" />
               AI SCOUT ENGINE ACTIVE
             </div>
             <span className="report-gen-target">
-              Synthesizing scouting dossier for <strong>{targetPlayer?.name}</strong>
+              Synthesizing tactical dossier for <strong>{targetPlayer?.name}</strong>
               <span className="busy-dots">
                 <span />
                 <span />
@@ -1437,6 +1438,20 @@ function Report({
               </span>
             </span>
           </div>
+
+          <div className="tactical-pass-lane">
+            <div className="tactical-node active">
+              <span>⚡ Scout Engine</span>
+            </div>
+            <div className="tactical-pass-track" />
+            <div className="tactical-rolling-ball">
+              <SoccerBall size={16} mode="spin" glow={true} />
+            </div>
+            <div className="tactical-node active">
+              <span>🎯 {targetPlayer?.name || "Player Dossier"}</span>
+            </div>
+          </div>
+
           <div className="report-skeleton-lines">
             <div className="skeleton-line long" />
             <div className="skeleton-line medium" />

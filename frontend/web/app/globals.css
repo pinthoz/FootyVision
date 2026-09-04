@@ -3140,3 +3140,135 @@ table td,
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
+
+/* ============================================================================= */
+/* SOCCER BALL DYNAMIC ANIMATIONS (SPIN, BOUNCE, TACTICAL ROLL)                  */
+/* ============================================================================= */
+
+.soccer-ball-container {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+.soccer-ball-container.has-glow {
+  filter: drop-shadow(0 0 8px rgba(255, 215, 0, 0.6));
+}
+
+.soccer-ball-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* 1. Continuous Spin (for action buttons) */
+.soccer-ball-container.mode-spin .soccer-ball-svg {
+  animation: ballFullSpin 0.9s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes ballFullSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* 2. Juggling / High Bounce (for thinking & filtering cards) */
+.soccer-ball-container.mode-bounce {
+  animation: ballBounceFlight 0.75s cubic-bezier(0.28, 0.84, 0.42, 1) infinite alternate;
+}
+
+.soccer-ball-container.mode-bounce .soccer-ball-svg {
+  animation: ballBounceRotate 1.5s linear infinite;
+}
+
+.soccer-ball-shadow {
+  position: absolute;
+  bottom: -6px;
+  left: 15%;
+  width: 70%;
+  height: 4px;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 50%;
+  filter: blur(1px);
+  animation: ballShadowScale 0.75s cubic-bezier(0.28, 0.84, 0.42, 1) infinite alternate;
+}
+
+@keyframes ballBounceFlight {
+  0% { transform: translateY(0) scaleY(0.9) scaleX(1.1); }
+  15% { transform: translateY(-4px) scaleY(1.05) scaleX(0.95); }
+  100% { transform: translateY(-20px) scale(1); }
+}
+
+@keyframes ballBounceRotate {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes ballShadowScale {
+  0% { transform: scale(1.2); opacity: 0.7; }
+  100% { transform: scale(0.4); opacity: 0.15; }
+}
+
+/* 3. Pitch pass lane in report generation card */
+.tactical-pass-lane {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: relative;
+  margin: 12px 0 16px;
+  padding: 8px 14px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed rgba(184, 142, 45, 0.35);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.tactical-node {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  z-index: 2;
+}
+
+.tactical-node.active {
+  color: var(--a);
+}
+
+.tactical-pass-track {
+  position: absolute;
+  left: 20%;
+  right: 20%;
+  top: 50%;
+  height: 2px;
+  background: linear-gradient(90deg, var(--a), #38bdf8, var(--a));
+  background-size: 200% 100%;
+  animation: passTrackPulse 1.5s linear infinite;
+  transform: translateY(-50%);
+  z-index: 1;
+}
+
+.tactical-rolling-ball {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  animation: tacticalBallRoll 2.2s ease-in-out infinite alternate;
+  z-index: 3;
+}
+
+@keyframes tacticalBallRoll {
+  0% { left: 22%; transform: translateY(-50%) rotate(0deg); }
+  100% { left: 74%; transform: translateY(-50%) rotate(720deg); }
+}
+
+@keyframes passTrackPulse {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
