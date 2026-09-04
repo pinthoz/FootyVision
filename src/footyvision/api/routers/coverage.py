@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from footyvision.api.schemas import CatalogueEntry, CoverageResponse, CoverageSeason
 from footyvision.db.base import get_session
 from footyvision.db.models import Competition, Match, PlayerSeasonStats, Season
+from footyvision.db.quality import COMPLETE_THRESHOLD
 
 # What StatsBomb Open Data offers, checked against the live competition list on this date.
 # A snapshot rather than a live call: listing every season costs one HTTP request each, and
@@ -55,9 +56,6 @@ _CATALOGUE: tuple[tuple, ...] = (
 
 
 router = APIRouter(tags=["coverage"])
-
-# Below this share of a full double round-robin a season is a fragment, not a season.
-COMPLETE_THRESHOLD = 0.9
 
 
 @router.get("/coverage", response_model=CoverageResponse)

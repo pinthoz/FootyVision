@@ -10,7 +10,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from footyvision.ml.features import PER90_FEATURES
+from footyvision.ml.features import PER90_FEATURES, peer_column
 
 
 def standardize_within_groups(
@@ -64,11 +64,12 @@ def find_similar(
     if idx is None:
         return None
 
-    z = standardize_within_groups(frame, feats)
+    peer = peer_column(frame)
+    z = standardize_within_groups(frame, feats, group_col=peer)
     target = frame.loc[idx]
-    group = target["position_group"]
+    group = target[peer]
 
-    pool_mask = (frame["position_group"] == group) & (frame["player_id"] != player_id)
+    pool_mask = (frame[peer] == group) & (frame["player_id"] != player_id)
     pool_idx = frame.index[pool_mask]
     if len(pool_idx) == 0:
         return target, frame.loc[[]].assign(similarity=[])
@@ -97,9 +98,13 @@ def radar_percentiles(
     if idx is None:
         return None
 
+    peer = peer_column(frame)
     target = frame.loc[idx]
+    # Ranked inside the peer group, reported as the position group: the peer key is an
+    # internal partition ("F:DEF"), and letting it reach the API would change a documented
+    # field into something no caller can interpret.
+    group_frame = frame[frame[peer] == target[peer]]
     group = target["position_group"]
-    group_frame = frame[frame["position_group"] == group]
 
     out: dict[str, dict[str, float]] = {}
     for f in features:

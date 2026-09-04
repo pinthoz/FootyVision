@@ -74,4 +74,4 @@ def fragment_seasons(
     without fixtures, and excluding on an unknown would empty the pool of any instance
     holding aggregates without match rows — including every test fixture.
     """
-    return {key: None for key, ratio in season_coverage(session).items() if ratio < threshold}.keys()
+    return {key for key, ratio in season_coverage(session).items() if ratio < threshold}

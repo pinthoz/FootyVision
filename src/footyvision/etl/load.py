@@ -120,6 +120,7 @@ def load_competition_season(
             id=competition_id,
             name=meta["competition_name"],
             country=meta.get("country_name"),
+            gender=meta.get("competition_gender"),
         )
     )
     _get_or_create_season(session, competition_id, season_id, str(meta["season_name"]))

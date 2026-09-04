@@ -21,6 +21,14 @@ class Settings(BaseSettings):
 
     # --- ETL ---
     min_minutes: int = Field(default=600, description="Min season minutes to include a player.")
+    # Seasons below this share of a full double round-robin are fragments: a per-90 rate
+    # from 34 games of a 306-game season is noisy, and ranking it alongside complete
+    # seasons moves everybody else's percentile. Default 0 keeps everything the database
+    # holds — raise it (0.9 is the natural value) to exclude fragments from the pool.
+    min_season_coverage: float = Field(
+        default=0.0,
+        description="Minimum season completeness for a player to enter the pool.",
+    )
 
     # --- LLM (local, OpenAI-compatible endpoint) ---
     llm_base_url: str = "http://localhost:1234/v1"

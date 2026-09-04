@@ -105,3 +105,107 @@ def test_radar_percentiles_reflect_standing_in_group():
 
 def test_find_similar_returns_none_for_unknown_player():
     assert find_similar(_frame(), player_id=999) is None
+
+
+# --- fragment seasons ------------------------------------------------------------------
+
+
+def _seed_two_seasons(db_session):
+    """A complete four-team season and a two-match fragment of another."""
+    from footyvision.db.models import (
+        METRIC_COLUMNS,
+        Competition,
+        Match,
+        Player,
+        PlayerSeasonStats,
+        Team,
+    )
+
+    db_session.add(Competition(id=90, name="Whole League", country="Nowhere"))
+    db_session.add(Competition(id=91, name="Fragment League", country="Nowhere"))
+    for tid in (901, 902, 903, 904):
+        db_session.add(Team(id=tid, name=f"Team {tid}"))
+    db_session.flush()
+
+    match_id = 5000
+    for home in (901, 902, 903, 904):
+        for away in (901, 902, 903, 904):
+            if home != away:
+                db_session.add(
+                    Match(
+                        id=match_id,
+                        competition_id=90,
+                        sb_season_id=1,
+                        home_team_id=home,
+                        away_team_id=away,
+                    )
+                )
+                match_id += 1
+    for home, away in ((901, 902), (903, 904)):
+        db_session.add(
+            Match(
+                id=match_id, competition_id=91, sb_season_id=1, home_team_id=home, away_team_id=away
+            )
+        )
+        match_id += 1
+
+    pid = 500
+    for competition_id in (90, 91):
+        for _ in range(3):
+            pid += 1
+            db_session.add(Player(id=pid, name=f"P{pid}", country="Nowhere"))
+            db_session.add(
+                PlayerSeasonStats(
+                    player_id=pid,
+                    competition_id=competition_id,
+                    sb_season_id=1,
+                    primary_position="Center Forward",
+                    matches_played=20,
+                    minutes=1800.0,
+                    **{f"{m}_per90": 1.0 for m in METRIC_COLUMNS},
+                )
+            )
+    db_session.commit()
+
+
+def test_fragment_seasons_are_kept_out_of_the_pool(db_session, monkeypatch):
+    """A per-90 rate from two games of a twelve-game season is noise, and ranking it
+    alongside real seasons moves everybody else's percentile.
+
+    The threshold is set explicitly rather than relied on: it defaults to 0 (keep
+    everything) and is an operator's choice, so the test must state the setting it is
+    about instead of inheriting whatever the environment happens to carry.
+    """
+    from footyvision.config import Settings
+    from footyvision.ml import features as features_module
+    from footyvision.ml.features import load_feature_frame
+
+    monkeypatch.setattr(features_module, "get_settings", lambda: Settings(min_season_coverage=0.9))
+    _seed_two_seasons(db_session)
+
+    pool = load_feature_frame(db_session, 600)
+
+    assert "Whole League" in set(pool["competition"])
+    assert "Fragment League" not in set(pool["competition"])
+
+
+def test_fragments_can_be_asked_for_explicitly(db_session):
+    """The data is filtered, never deleted — the coverage panel still reports it."""
+    from footyvision.ml.features import load_feature_frame
+
+    _seed_two_seasons(db_session)
+
+    pool = load_feature_frame(db_session, 600, include_fragments=True)
+
+    assert "Fragment League" in set(pool["competition"])
+
+
+def test_a_season_with_no_matches_recorded_is_not_treated_as_a_fragment(db_session):
+    """Coverage cannot be judged without fixtures, and excluding on an unknown would empty
+    the pool of any instance holding aggregates without match rows."""
+    from footyvision.db.quality import fragment_seasons
+    from footyvision.ml.features import load_feature_frame
+
+    # The shared fixture seeds season stats and no matches at all.
+    assert fragment_seasons(db_session) == set()
+    assert not load_feature_frame(db_session, 600).empty
