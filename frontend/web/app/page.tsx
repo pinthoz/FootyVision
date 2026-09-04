@@ -1110,7 +1110,7 @@ function Assistant({
     const query = questionToAsk ?? q;
     if (!query.trim()) return;
     setBusy(true);
-    setAnswer("Retrieving players and reading their numbers…");
+    setAnswer("");
     setSources([]);
     const { status, data } = await api.assistant(query.trim());
     setBusy(false);
@@ -1194,11 +1194,11 @@ function Assistant({
         <div className="prose ai-response-box">
           <Markdown text={answer} />
         </div>
-      ) : (
+      ) : !busy ? (
         <div className="ai-idle-hint">
           Describe the player you want, or ask how two compare. Every answer names its sources.
         </div>
-      )}
+      ) : null}
 
       {sources.length > 0 && (
         <div className="sources-card">
