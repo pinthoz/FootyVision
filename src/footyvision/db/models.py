@@ -51,6 +51,10 @@ class Competition(Base):
     id: Mapped[int] = mapped_column(primary_key=True)  # StatsBomb competition_id
     name: Mapped[str] = mapped_column(String(120))
     country: Mapped[str | None] = mapped_column(String(120))
+    # "male" | "female", straight from the StatsBomb competition list. Percentiles and the
+    # similarity pool are partitioned on it: the two games have different baselines, and a
+    # rate ranked across both describes neither.
+    gender: Mapped[str | None] = mapped_column(String(10))
 
     seasons: Mapped[list[Season]] = relationship(back_populates="competition")
 
@@ -136,6 +140,13 @@ class PlayerVector(Base):
     foot: Mapped[str | None] = mapped_column(String(10))
     age: Mapped[float | None] = mapped_column(Float)
     position_group: Mapped[str | None] = mapped_column(String(20))
+    nationality: Mapped[str | None] = mapped_column(String(120))
+    # The seventeen per-90 values as a JSON object. The prose profile only names a
+    # player's four best and one worst metric, so a question about anything else -- "which
+    # midfielders make the most tackles" -- reached an assistant whose context genuinely
+    # did not contain the number, and it correctly answered that it did not have the data
+    # we had all along. Carried here so the asked-for metric can be added to the context.
+    metrics: Mapped[str | None] = mapped_column(Text)
 
 
 class PlayerMatchStats(Base):

@@ -13,6 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
+from footyvision.config import get_settings
 from footyvision.db.models import (
     METRIC_COLUMNS,
     Competition,
@@ -20,6 +21,7 @@ from footyvision.db.models import (
     Player,
     PlayerSeasonStats,
 )
+from footyvision.db.quality import fragment_seasons
 
 # The per-90 columns that describe playing style — the similarity feature space.
 # Deliberately closed: similarity and the percentile radars both read this, and a
@@ -94,6 +96,7 @@ def load_feature_frame(
     min_minutes: float | None = None,
     competition_id: int | None = None,
     season_id: int | None = None,
+    include_fragments: bool = False,
 ) -> pd.DataFrame:
     """Load player-season rows (with names) into a DataFrame, one row per player-season.
 
@@ -106,10 +109,14 @@ def load_feature_frame(
             Player.name.label("name"),
             PlayerSeasonStats.competition_id,
             Competition.name.label("competition"),
+            Competition.gender.label("gender"),
             PlayerSeasonStats.sb_season_id,
             Player.date_of_birth.label("date_of_birth"),
             Player.foot.label("foot"),
             Player.height_cm.label("height_cm"),
+            # Labelled "nationality" rather than "country" because the competition brings
+            # a country of its own — a Brazilian in La Liga has both, and they differ.
+            Player.country.label("nationality"),
             PlayerSeasonStats.primary_position,
             PlayerSeasonStats.matches_played,
             PlayerSeasonStats.minutes,
@@ -128,8 +135,11 @@ def load_feature_frame(
 
     engine: Engine = session.get_bind()
     frame = pd.read_sql(stmt, engine)
+    if not include_fragments:
+        frame = _drop_fragment_seasons(session, frame)
     frame["position_group"] = frame["primary_position"].map(position_group)
     frame["position_role"] = frame["primary_position"].map(position_role)
+    frame["peer_group"] = _peer_groups(frame)
     frame["age"] = _age_at_season(session, frame)
     # NaN rather than 0 where the foot is unknown: the tree models treat NaN as missing
     # and route it, whereas a 0 would assert "not left-footed".
@@ -137,6 +147,49 @@ def load_feature_frame(
         frame[column] = (frame["foot"] == value).astype(float)
         frame.loc[frame["foot"].isna(), column] = float("nan")
     return frame
+
+
+def peer_column(frame: pd.DataFrame) -> str:
+    """The column to rank and standardise within.
+
+    `peer_group` when the frame carries it, `position_group` otherwise — frames built by
+    hand in tests have no competition behind them, and falling back keeps them working.
+    """
+    return "peer_group" if "peer_group" in frame.columns else "position_group"
+
+
+def _peer_groups(frame: pd.DataFrame) -> pd.Series:
+    """Position group, split by the gender of the competition it was played in.
+
+    A single-population database gets exactly the old behaviour: with one gender present
+    the labels differ only by a prefix, and every group holds the same players it did.
+    """
+    gender = frame.get("gender")
+    if gender is None:
+        return frame["position_group"]
+    known = gender.fillna("unknown").astype(str)
+    return known.str.slice(0, 1).str.upper() + ":" + frame["position_group"].astype(str)
+
+
+def _drop_fragment_seasons(session: Session, frame: pd.DataFrame) -> pd.DataFrame:
+    """Remove players whose season is too incomplete to compare anyone against.
+
+    Percentiles and z-scores are computed over whichever rows are in this frame, so a
+    fragment does not merely carry its own unreliable numbers — it shifts everybody
+    else's rank. The Bundesliga 2015/16 in this database is 34 games of 306, and its 19
+    players were being ranked against players from four complete seasons.
+    """
+    threshold = get_settings().min_season_coverage
+    if threshold <= 0 or frame.empty:
+        return frame
+
+    fragments = fragment_seasons(session, threshold)
+    if not fragments:
+        return frame
+
+    keys = list(zip(frame["competition_id"], frame["sb_season_id"], strict=True))
+    keep = [key not in fragments for key in keys]
+    return frame[pd.Series(keep, index=frame.index)].copy()
 
 
 def _age_at_season(session: Session, frame: pd.DataFrame) -> pd.Series:

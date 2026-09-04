@@ -7,6 +7,7 @@ the swap-in at much larger scale.
 
 from __future__ import annotations
 
+import json
 import re
 import unicodedata
 from dataclasses import dataclass
@@ -24,6 +25,9 @@ class Hit:
     name: str
     text: str
     score: float
+    # Where this profile sits in the store. A player who changed league mid-season has
+    # two rows under one id, so the id alone cannot say which profile was retrieved.
+    row: int = -1
 
 
 def _name_tokens(text: str) -> list[str]:
@@ -72,9 +76,24 @@ class VectorStore:
         self.foot = np.asarray(attrs.get("foot", [None] * n), dtype=object)
         self.age = np.asarray(attrs.get("age", [np.nan] * n), dtype=np.float32)
         self.position_group = np.asarray(attrs.get("position_group", [None] * n), dtype=object)
+        self.nationality = np.asarray(attrs.get("nationality", [None] * n), dtype=object)
+        # Per-90 values per row, as plain dicts. Not a numpy matrix: an index built
+        # before these existed has none, and a ragged column of Nones is exactly the
+        # "this dimension is unknown" case the filters already handle.
+        self.metrics = list(attrs.get("metrics") or [None] * n)
 
     def __len__(self) -> int:
         return len(self.ids)
+
+    @property
+    def countries(self) -> list[str]:
+        """The nationalities actually present, so the parser only recognises real ones.
+
+        Reading the vocabulary off the index rather than hardcoding it means a question
+        naming a country nobody in the pool comes from yields no filter and falls back to
+        ranking, instead of narrowing the pool to nothing and answering "no such player".
+        """
+        return sorted({str(v) for v in self.nationality if v})
 
     @classmethod
     def build(cls, docs: list[dict], client: LLMClient, batch_size: int = 32) -> VectorStore:
@@ -91,6 +110,8 @@ class VectorStore:
                 "foot": [d.get("foot") for d in docs],
                 "age": [d.get("age", np.nan) for d in docs],
                 "position_group": [d.get("position_group") for d in docs],
+                "nationality": [d.get("nationality") for d in docs],
+                "metrics": [d.get("metrics") for d in docs],
             },
         )
 
@@ -106,7 +127,7 @@ class VectorStore:
         for i, name in enumerate(self.names):
             # Skip very short tokens ("de", "da") — only distinctive ones identify a player.
             if any(tok in asked for tok in _name_tokens(str(name)) if len(tok) >= 4):
-                hits.append(Hit(int(self.ids[i]), str(name), str(self.texts[i]), 1.0))
+                hits.append(Hit(int(self.ids[i]), str(name), str(self.texts[i]), 1.0, i))
         return hits
 
     def style_centroid(self, player_ids: list[int]) -> np.ndarray | None:
@@ -139,12 +160,66 @@ class VectorStore:
             mask &= self.foot == constraints.foot
         if constraints.position_group is not None and self._knows(self.position_group):
             mask &= self.position_group == constraints.position_group
+        if constraints.nationality is not None and self._knows(self.nationality):
+            mask &= self.nationality == constraints.nationality
         if self._knows(self.age):
             if constraints.max_age is not None:
                 mask &= np.nan_to_num(self.age, nan=np.inf) <= constraints.max_age
             if constraints.min_age is not None:
                 mask &= np.nan_to_num(self.age, nan=-np.inf) >= constraints.min_age
         return mask
+
+    def metric_notes(self, hits: list[Hit], columns: list[str]) -> list[str]:
+        """One line per retrieved player giving the metrics the question asked about.
+
+        The profile prose names a player's four best and one worst metric, so a question
+        about anything else arrives at a model whose context does not hold the number.
+        Asked which midfielders make the most tackles, the assistant answered that it had
+        no tackle data — true of its context, false of the database. These lines close
+        that gap without lengthening every profile with seventeen figures nobody asked for.
+
+        Returns nothing when the index predates the stored metrics, which leaves the
+        assistant exactly as it was rather than breaking it.
+        """
+        if not columns:
+            return []
+        from footyvision.rag.metrics import label
+
+        notes: list[str] = []
+        for hit in hits:
+            values = self.metrics[hit.row] if 0 <= hit.row < len(self.metrics) else None
+            if not values:
+                continue
+            parts = [
+                f"{label(column)} {float(values[column]):.2f} per 90"
+                for column in columns
+                if column in values
+            ]
+            if parts:
+                notes.append(f"{hit.name}: {', '.join(parts)}.")
+        return notes
+
+    def unknown_dropped(self, constraints: Constraints) -> dict[str, int]:
+        """How many players each constraint excluded for want of the attribute, not for
+        failing it.
+
+        Failing a filter and being unfilterable look identical in the mask, and they are
+        not the same thing. Date of birth and preferred foot come from a men's football
+        export, so an age or foot requirement silently removes every player in the
+        women's competitions — a real answer to a question the user did not ask. Counting
+        the difference lets the answer say so.
+        """
+        out: dict[str, int] = {}
+        if constraints.foot is not None and self._knows(self.foot):
+            # Falsy, not just None: the index stores an unrecorded foot as "" in places,
+            # and the rest of this class already treats both as unknown.
+            out["foot"] = int(sum(1 for v in self.foot if not v))
+        if constraints.nationality is not None and self._knows(self.nationality):
+            out["nationality"] = int(sum(1 for v in self.nationality if not v))
+        if constraints.max_age is not None or constraints.min_age is not None:
+            if self._knows(self.age):
+                out["age"] = int((~np.isfinite(self.age)).sum())
+        return {key: count for key, count in out.items() if count}
 
     @staticmethod
     def _knows(values: np.ndarray) -> bool:
@@ -173,7 +248,13 @@ class VectorStore:
             return []
         order = candidates[np.argsort(scores[candidates])[::-1][:k]]
         return [
-            Hit(int(self.ids[i]), str(self.names[i]), str(self.texts[i]), float(scores[i]))
+            Hit(
+                int(self.ids[i]),
+                str(self.names[i]),
+                str(self.texts[i]),
+                float(scores[i]),
+                int(i),
+            )
             for i in order
         ]
 
@@ -194,6 +275,8 @@ class VectorStore:
                     foot=self.foot[i] if self.foot[i] else None,
                     age=None if not np.isfinite(self.age[i]) else float(self.age[i]),
                     position_group=self.position_group[i] if self.position_group[i] else None,
+                    nationality=self.nationality[i] if self.nationality[i] else None,
+                    metrics=json.dumps(self.metrics[i]) if self.metrics[i] else None,
                 )
                 for i in range(len(self.ids))
             ]
@@ -221,6 +304,8 @@ class VectorStore:
                 "foot": [r.foot for r in rows],
                 "age": [np.nan if r.age is None else r.age for r in rows],
                 "position_group": [r.position_group for r in rows],
+                "nationality": [r.nationality for r in rows],
+                "metrics": [json.loads(r.metrics) if r.metrics else None for r in rows],
             },
         )
         return store, rows[0].embed_model
@@ -237,11 +322,21 @@ class VectorStore:
             foot=self.foot,
             age=self.age,
             position_group=self.position_group,
+            nationality=self.nationality,
+            metrics=np.asarray([json.dumps(m) if m else "" for m in self.metrics]),
         )
 
     @classmethod
     def load(cls, path: str | Path) -> VectorStore:
         data = np.load(path, allow_pickle=True)
         # Indexes written before the attributes existed have none; degrade, do not crash.
-        attrs = {k: data[k] for k in ("foot", "age", "position_group") if k in data.files}
+        attrs = {
+            k: data[k]
+            for k in ("foot", "age", "position_group", "nationality")
+            if k in data.files
+        }
+        if "metrics" in data.files:
+            # Stored as JSON strings because numpy has no dtype for a dict; "" is how an
+            # absent one was written.
+            attrs["metrics"] = [json.loads(m) if m else None for m in data["metrics"]]
         return cls(data["ids"], data["names"], data["texts"], data["vectors"], attrs)

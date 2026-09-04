@@ -96,6 +96,7 @@ class SearchResultRow(BaseModel):
     competition: str | None
     primary_position: str | None
     position_group: str
+    nationality: str | None = None
     stats: dict[str, float]
 
 
@@ -116,6 +117,9 @@ class ScoreResponse(BaseModel):
     predicted_role: str | None = None
     role_confidence: float | None = None
     role_profile: dict[str, float] = {}
+    # The exact position and the model's three best guesses at it.
+    predicted_position: str | None = None
+    position_shortlist: list[str] = []
 
 
 class RankingRow(BaseModel):
@@ -138,12 +142,15 @@ class FeatureImportance(BaseModel):
 
 
 class RoleModelInfo(BaseModel):
-    """The ten-role classifier that sits beside the four-group one."""
+    """A finer-grained classifier sitting beside the four-group one."""
 
     classes: list[str]
     test_accuracy: float
     n_train: int
     n_test: int
+    # Only meaningful where there are enough classes for a single-label score to
+    # understate the model — reported for the 21-class exact position, not for four groups.
+    top3_accuracy: float | None = None
 
 
 class ModelInfoResponse(BaseModel):
@@ -156,6 +163,7 @@ class ModelInfoResponse(BaseModel):
     features: list[str] = []
     top_features: list[FeatureImportance] = []
     role_model: RoleModelInfo | None = None
+    exact_model: RoleModelInfo | None = None
 
 
 class AssistantRequest(BaseModel):
@@ -175,6 +183,11 @@ class AssistantResponse(BaseModel):
     # The hard requirements read out of the question and applied before ranking, so the
     # caller can see why a pool was narrowed — null when the question stated none.
     filters: str | None = None
+    # Players a filter removed for want of the attribute rather than for failing it,
+    # counted per requirement. Date of birth and preferred foot come from a men's football
+    # source, so an age or foot question drops the women's competitions without ever
+    # comparing them, and a caller that cannot see that reads a partial pool as the whole.
+    not_considered: dict[str, int] | None = None
 
 
 class DistributionPoint(BaseModel):

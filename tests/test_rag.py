@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from footyvision.ml.features import PER90_FEATURES, position_group
 from footyvision.rag.assistant import ScoutAssistant
@@ -218,6 +219,187 @@ def test_constraints_are_empty_for_a_question_that_states_none():
     assert c.describe() == ""
 
 
+@pytest.mark.parametrize(
+    ("question", "expected"),
+    [
+        # The pair that exposed the gap: one was filtered, the other was not.
+        ("a left-footed winger", "left-footed, FWD"),
+        ("um extremo canhoto", "left-footed, FWD"),
+        # Portuguese inflects the adjective, which a bare `s?` on an English stem misses.
+        ("avancados ambidestros", "two-footed, FWD"),
+        # ...and pluralises "-al" as "-ais", which it cannot build at all.
+        ("laterais destros", "right-footed, DEF"),
+        ("defesas centrais", "DEF"),
+        ("guarda-redes experientes", "GK, aged 32 or over"),
+        ("ponta de lanca sub-21", "FWD, aged 21 or under"),
+        ("medios com mais de 30 anos", "MID, aged 30 or over"),
+        # "medio ala" is a midfielder: the first position word in the sentence wins, and
+        # "ala" alone would otherwise be read as a wing-back.
+        ("um medio ala jovem", "MID, aged 23 or under"),
+        ("quem e o melhor jogador", ""),
+    ],
+)
+def test_constraints_are_read_in_portuguese_as_well_as_english(question, expected):
+    """The assistant takes questions in any language; the filters must too.
+
+    While these patterns were English-only, "a left-footed winger" was filtered down to
+    left-footed forwards and "um extremo canhoto" was not filtered at all — it fell back
+    to similarity ranking, which cannot enforce a foot and will happily return right-footed
+    players. A silent difference in behaviour between two ways of asking the same thing.
+    """
+    from footyvision.rag.constraints import parse_constraints
+
+    assert parse_constraints(question).describe() == expected
+
+
+def test_feminine_forms_are_read_too():
+    """Half the pool is women's football, and Portuguese inflects for gender."""
+    from footyvision.rag.constraints import parse_constraints
+
+    assert parse_constraints("avancadas canhotas").describe() == "left-footed, FWD"
+    assert parse_constraints("uma lateral destra").describe() == "right-footed, DEF"
+    assert parse_constraints("jogadoras ambidestras").foot == "both"
+
+
+def test_an_ambiguous_word_is_left_unparsed_rather_than_guessed():
+    """"médias" is both female midfielders and averages, and the accents are stripped.
+
+    Reading it as a position would filter "qual e a media de remates" down to midfielders
+    and answer a question nobody asked. Not filtering costs a narrowing; filtering wrongly
+    costs the answer.
+    """
+    from footyvision.rag.constraints import parse_constraints
+
+    assert parse_constraints("qual e a media de remates").position_group is None
+    # The male form is unambiguous and still parses.
+    assert parse_constraints("medios que pressionam alto").position_group == "MID"
+
+
+_POOL = ["Spain", "Brazil", "Portugal", "Côte d'Ivoire", "Venezuela\xa0(Bolivarian Republic)"]
+
+
+@pytest.mark.parametrize(
+    ("question", "expected"),
+    [
+        ("a Brazilian left-footed winger", "left-footed, FWD, from Brazil"),
+        ("um extremo brasileiro canhoto", "left-footed, FWD, from Brazil"),
+        # Feminine and plural, because half the pool is women's football.
+        ("avancadas brasileiras", "FWD, from Brazil"),
+        ("uma lateral portuguesa", "DEF, from Portugal"),
+        # "espanhol" pluralises irregularly, to "espanhóis".
+        ("medios espanhois", "MID, from Spain"),
+        # Stored with an accent; asked without one.
+        ("wingers from Ivory Coast", "FWD, from Côte d'Ivoire"),
+        ("extremos da costa do marfim", "FWD, from Côte d'Ivoire"),
+        # Stored with a parenthetical and a non-breaking space; asked as the plain name.
+        ("players from Venezuela", "from Venezuela\xa0(Bolivarian Republic)"),
+    ],
+)
+def test_nationality_is_read_and_resolved_to_the_stored_spelling(question, expected):
+    from footyvision.rag.constraints import parse_constraints
+
+    assert parse_constraints(question, _POOL).describe() == expected
+
+
+def test_a_country_absent_from_the_pool_is_not_a_filter():
+    """Narrowing to a country nobody comes from would answer "no such player exists".
+
+    That is a different claim from "none was ever loaded", and the second is the true one.
+    Falling back to ranking at least returns the closest thing the data holds.
+    """
+    from footyvision.rag.constraints import parse_constraints
+
+    assert parse_constraints("a Nigerian striker", _POOL).nationality is None
+    # Without the index's vocabulary there is no nationality filter at all.
+    assert parse_constraints("a Brazilian striker").nationality is None
+
+
+def test_the_store_offers_the_nationalities_it_holds():
+    import numpy as np
+
+    from footyvision.rag.store import VectorStore
+
+    store = VectorStore(
+        [1, 2, 3],
+        ["A", "B", "C"],
+        ["a", "b", "c"],
+        np.eye(3, 4, dtype=np.float32),
+        attrs={"nationality": ["Brazil", "Spain", None]},
+    )
+
+    assert store.countries == ["Brazil", "Spain"]
+
+
+@pytest.mark.parametrize(
+    ("question", "expected"),
+    [
+        # The question that exposed the gap: the assistant answered that it had no tackle
+        # data, while `tackles_per90` sat in the database for every player.
+        ("Quais os medios experientes com mais desarmes?", ["tackles_per90"]),
+        ("who makes the most tackles and interceptions?", ["tackles_per90", "interceptions_per90"]),
+        # A compound phrase must beat the simple one inside it, in both directions.
+        ("quem tem mais passes progressivos", ["progressive_passes_per90"]),
+        ("melhores em dribles completos", ["dribbles_completed_per90"]),
+        ("progressive carries", ["progressive_carries_per90"]),
+        # Portuguese names this one as a verb far more often than as a noun.
+        ("quais os guarda-redes que mais recuperam bolas?", ["ball_recoveries_per90"]),
+        # Nothing we hold: better no note than a guessed one.
+        ("who wins the most aerial duels?", []),
+        ("quem e o melhor jogador", []),
+    ],
+)
+def test_the_metric_a_question_asks_about_is_read_from_the_question(question, expected):
+    from footyvision.rag.metrics import metrics_in
+
+    assert metrics_in(question) == expected
+
+
+def test_metric_notes_supply_values_the_profile_prose_leaves_out():
+    """A profile names four strengths and one weakness; the other twelve are invisible.
+
+    Without this the assistant says it has no data on a metric the database holds, which
+    is honest about its context and wrong about the dataset.
+    """
+    import numpy as np
+
+    from footyvision.rag.store import Hit, VectorStore
+
+    store = VectorStore(
+        [1, 2],
+        ["Anchor", "Runner"],
+        ["Anchor profile", "Runner profile"],
+        np.eye(2, 4, dtype=np.float32),
+        attrs={"metrics": [{"tackles_per90": 3.41}, {"tackles_per90": 0.87}]},
+    )
+    hits = [Hit(1, "Anchor", "Anchor profile", 1.0, 0), Hit(2, "Runner", "Runner profile", 0.9, 1)]
+
+    assert store.metric_notes(hits, ["tackles_per90"]) == [
+        "Anchor: tackles 3.41 per 90.",
+        "Runner: tackles 0.87 per 90.",
+    ]
+    # No metric asked, or an index built before the values were stored: say nothing rather
+    # than break.
+    assert store.metric_notes(hits, []) == []
+    bare = VectorStore([1], ["A"], ["a"], np.eye(1, 4, dtype=np.float32))
+    assert bare.metric_notes([Hit(1, "A", "a", 1.0, 0)], ["tackles_per90"]) == []
+
+
+def test_prompt_lists_the_asked_for_metric_apart_from_the_profiles():
+    from footyvision.rag.assistant import build_prompt
+
+    _, user = build_prompt("most tackles?", [], None, None, ["Anchor: tackles 3.41 per 90."])
+
+    assert "The metric asked about" in user
+    assert "Anchor: tackles 3.41 per 90." in user
+
+
+def test_accented_and_unaccented_spellings_are_the_same_word():
+    from footyvision.rag.constraints import parse_constraints
+
+    assert parse_constraints("médios jovens") == parse_constraints("medios jovens")
+    assert parse_constraints("médios jovens").position_group == "MID"
+
+
 def _attr_store():
     import numpy as np
 
@@ -252,6 +434,34 @@ def test_an_unknown_attribute_fails_the_constraint_rather_than_passing_it():
     store = _attr_store()
 
     assert list(store.ids[store.matching(Constraints(foot="left"))]) == [1, 3]
+
+
+def test_players_dropped_for_a_missing_attribute_are_counted_separately():
+    """Failing a filter and being unfilterable are not the same fact.
+
+    Date of birth and preferred foot come from a men's football export, so a foot or age
+    requirement removes every player in the women's competitions without their ever being
+    compared against it. That is a limit of the data, and the answer has to be able to
+    say so rather than presenting a shortlist drawn from half the pool as the whole one.
+    """
+    from footyvision.rag.constraints import Constraints
+
+    store = _attr_store()
+
+    assert store.unknown_dropped(Constraints(foot="left")) == {"foot": 1}
+    # Every age is recorded here, so an age filter hides nobody.
+    assert store.unknown_dropped(Constraints(max_age=23.0)) == {}
+    # A constraint that was not asked for reports nothing, even though feet are missing.
+    assert store.unknown_dropped(Constraints(position_group="FWD")) == {}
+
+
+def test_prompt_discloses_the_players_it_could_not_check():
+    from footyvision.rag.assistant import build_prompt
+    from footyvision.rag.constraints import Constraints
+
+    system, _ = build_prompt("a left-footed winger", [], Constraints(foot="left"), {"foot": 989})
+
+    assert "989 players have no recorded foot" in system
 
 
 def test_search_ranks_only_within_the_filtered_subset():
