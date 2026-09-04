@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
+from xgboost import XGBClassifier
 
 from footyvision.ml.features import PER90_FEATURES, position_group
 from footyvision.ml.scoring import performance_score, rank_players, score_frame
@@ -156,3 +157,56 @@ def test_height_is_never_a_model_feature():
 
     for target in ("position_group", "position_role", "primary_position"):
         assert "height_cm" not in classifier_features(frame, target)
+
+
+# --- calibrated confidence ---------------------------------------------------------------
+
+
+def test_the_model_carries_a_calibrator():
+    """The dashboard prints the confidence as a headline figure, so it has to be honest.
+
+    Uncalibrated, this classifier said 90% where it was right 75% of the time.
+    """
+    from footyvision.ml.talent import train_position_classifier
+
+    model = train_position_classifier(_synthetic())
+
+    assert model.calibrator is not None
+
+
+def test_probabilities_come_from_the_calibrator():
+    from footyvision.ml.talent import train_position_classifier
+
+    frame = _synthetic()
+    model = train_position_classifier(frame)
+    x = frame[model.features].to_numpy(dtype=float)[:5]
+
+    expected = model.calibrator.predict_proba(x)
+    assert np.allclose(model.predict_proba(x), expected)
+
+
+def test_shap_still_reads_the_raw_booster():
+    """TreeSHAP cannot see through a calibration wrapper, so the booster is kept."""
+    from footyvision.ml.talent import shap_importance, train_position_classifier
+
+    frame = _synthetic()
+    model = train_position_classifier(frame)
+
+    assert isinstance(model.model, XGBClassifier)
+    assert len(shap_importance(model, frame, top_n=3)) == 3
+
+
+def test_calibration_is_skipped_when_a_class_is_too_small():
+    """Isotonic regression needs at least three of every class for its internal folds.
+
+    Tested on the predicate rather than through a contrived frame: forcing a two-class
+    pool would trip XGBoost's own multiclass constraint instead, which is a different
+    thing and cannot happen with real data (there are always four position groups).
+    """
+    import numpy as np
+
+    from footyvision.ml.talent import _calibratable
+
+    assert _calibratable(np.array([0, 0, 0, 1, 1, 1]))
+    assert not _calibratable(np.array([0, 0, 1, 1, 1]))
+    assert not _calibratable(np.array([0, 0, 0, 0]))

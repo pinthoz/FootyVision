@@ -159,13 +159,19 @@ def value_report(
     """Match Transfermarkt 2015/16 values to our players, train LightGBM, print metrics."""
     from footyvision.etl.transfermarkt import read_market_values_2016
     from footyvision.ml.features import PER90_FEATURES, load_feature_frame
-    from footyvision.ml.value import bargains, match_values, shap_importance, train_value_model
+    from footyvision.ml.value import (
+        bargains,
+        match_values,
+        predict_values,
+        shap_importance,
+        train_value_model,
+    )
 
     settings = get_settings()
     mm = settings.min_minutes if min_minutes is None else min_minutes
-    console.print("[cyan]Loading Transfermarkt La Liga 2015/16 values...[/cyan]")
+    console.print("[cyan]Loading Transfermarkt 2015/16 values (ES1/GB1/IT1/FR1)...[/cyan]")
     values = read_market_values_2016()
-    console.print(f"  {len(values)} La Liga players with market values.")
+    console.print(f"  {len(values)} players with market values.")
 
     with SessionLocal() as session:
         features = load_feature_frame(session, mm)
@@ -178,6 +184,15 @@ def value_report(
         f"[green]LightGBM value model — R²={vm.r2:.2f}, MAE=€{vm.mae_eur:,.0f}[/green] "
         f"(train={vm.n_train}, test={vm.n_test})"
     )
+    if vm.interval_coverage is not None:
+        # The nominal 10th-90th band is an 80% interval; what it actually catches is
+        # measured and reported instead, because the label is the easy part.
+        console.print(
+            f"[green]10th-90th percentile band contains "
+            f"{vm.interval_coverage:.0%} of held-out players[/green] "
+            f"(nominally 80% — the shortfall is the model being more uncertain than its "
+            f"own quantiles admit)."
+        )
 
     imp = Table(title="Top features by mean |SHAP| — what drives value")
     imp.add_column("feature")
@@ -186,15 +201,25 @@ def value_report(
         imp.add_row(row["feature"], f"{row['mean_abs_shap']:.3f}")
     console.print(imp)
 
-    barg = Table(title="Bargains — performance implies more value than FIFA price")
-    for col in ["player", "pos", "FIFA value", "model value", "upside"]:
+    barg = Table(title="Bargains — performance implies more value than the market price")
+    for col in ["player", "pos", "market value", "model value", "10th-90th", "upside"]:
         barg.add_column(col)
+    priced = predict_values(vm, merged).set_index("name")
     for r in bargains(vm, merged, top_n=10):
+        row = priced.loc[r["name"]]
+        if hasattr(row, "iloc") and getattr(row, "ndim", 1) > 1:
+            row = row.iloc[0]
+        band = (
+            f"€{row['predicted_low'] / 1e6:.1f}-{row['predicted_high'] / 1e6:.1f}M"
+            if "predicted_low" in row
+            else "—"
+        )
         barg.add_row(
             r["name"],
             r["position_group"],
             f"€{r['actual_value']:,.0f}",
             f"€{r['predicted_value']:,.0f}",
+            band,
             f"€{r['upside']:,.0f}",
         )
     console.print(barg)

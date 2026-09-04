@@ -64,6 +64,14 @@ def match_values(
 
 @dataclass
 class ValueModel:
+    """The median model, plus the two quantile models that bound it.
+
+    A point estimate implies a precision this model does not have: R² is around 0.30 and
+    the mean absolute error is millions of euros, so "worth €12M more than his price" reads
+    as a finding when it is barely more than a direction. The 10th and 90th percentile
+    models make the width visible, and cost one extra fit each.
+    """
+
     model: LGBMRegressor
     features: list[str]
     r2: float
@@ -71,6 +79,11 @@ class ValueModel:
     n_train: int
     n_test: int
     value_col: str
+    lower: LGBMRegressor | None = None
+    upper: LGBMRegressor | None = None
+    # Share of held-out players whose real value fell inside the interval. An 80% interval
+    # that catches 80% is honest; one that catches 45% is decoration.
+    interval_coverage: float | None = None
 
 
 def train_value_model(
@@ -104,15 +117,56 @@ def train_value_model(
     pred_te = model.predict(x_te)
     r2 = float(r2_score(y_te, pred_te))
     mae_eur = float(mean_absolute_error(np.expm1(y_te), np.expm1(pred_te)))
-    return ValueModel(model, features, r2, mae_eur, len(x_tr), len(x_te), value_col)
+
+    # Quantile regression on the same features and split: the pinball loss at alpha 0.1
+    # and 0.9 bounds the middle 80% rather than chasing the mean.
+    lower = _quantile_model(0.1, seed).fit(x_tr, y_tr)
+    upper = _quantile_model(0.9, seed).fit(x_tr, y_tr)
+    inside = (y_te >= lower.predict(x_te)) & (y_te <= upper.predict(x_te))
+    coverage = float(np.mean(inside))
+
+    return ValueModel(
+        model,
+        features,
+        r2,
+        mae_eur,
+        len(x_tr),
+        len(x_te),
+        value_col,
+        lower=lower,
+        upper=upper,
+        interval_coverage=coverage,
+    )
+
+
+def _quantile_model(alpha: float, seed: int) -> LGBMRegressor:
+    """A bound, not a mean. Same shape as the median model so the three are comparable."""
+    return LGBMRegressor(
+        objective="quantile",
+        alpha=alpha,
+        n_estimators=400,
+        learning_rate=0.03,
+        num_leaves=15,
+        subsample=0.9,
+        colsample_bytree=0.9,
+        random_state=seed,
+        verbose=-1,
+    )
 
 
 def predict_values(vm: ValueModel, merged: pd.DataFrame) -> pd.DataFrame:
-    """Add `predicted_value` and `value_residual` (actual - predicted) columns."""
+    """Add `predicted_value`, its 10th/90th percentile bounds, and `value_residual`."""
     out = merged.copy()
-    pred_log = vm.model.predict(out[vm.features].to_numpy(dtype=float))
-    out["predicted_value"] = np.expm1(pred_log).round(0)
+    x = out[vm.features].to_numpy(dtype=float)
+    out["predicted_value"] = np.expm1(vm.model.predict(x)).round(0)
     out["value_residual"] = (out[vm.value_col] - out["predicted_value"]).round(0)
+    if vm.lower is not None and vm.upper is not None:
+        low = np.expm1(vm.lower.predict(x))
+        high = np.expm1(vm.upper.predict(x))
+        # Quantile models are fitted independently and can cross on individual rows;
+        # sorting the pair keeps every interval well-formed.
+        out["predicted_low"] = np.minimum(low, high).round(0)
+        out["predicted_high"] = np.maximum(low, high).round(0)
     return out
 
 

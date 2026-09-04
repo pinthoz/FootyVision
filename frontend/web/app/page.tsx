@@ -1361,25 +1361,25 @@ function Report({
 
   return (
     <div className="scouting-report-container">
-      <div className="report-target-selector">
-        <span>Generate Dossier for:</span>
-        <button
-          className={`chip ${selectedForReport === "A" ? "active" : ""}`}
-          onClick={() => setSelectedForReport("A")}
-          disabled={!playerA}
-        >
-          {playerA ? `Player A (${playerA.name})` : "Player A (Empty)"}
-        </button>
-        <button
-          className={`chip ${selectedForReport === "B" ? "active" : ""}`}
-          onClick={() => setSelectedForReport("B")}
-          disabled={!playerB}
-        >
-          {playerB ? `Player B (${playerB.name})` : "Player B (Empty)"}
-        </button>
-      </div>
+      <div className="report-header-row">
+        <div className="report-target-selector">
+          <span>Generate Dossier for:</span>
+          <button
+            className={`chip ${selectedForReport === "A" ? "active" : ""}`}
+            onClick={() => setSelectedForReport("A")}
+            disabled={!playerA}
+          >
+            {playerA ? `Player A (${playerA.name})` : "Player A (Empty)"}
+          </button>
+          <button
+            className={`chip ${selectedForReport === "B" ? "active" : ""}`}
+            onClick={() => setSelectedForReport("B")}
+            disabled={!playerB}
+          >
+            {playerB ? `Player B (${playerB.name})` : "Player B (Empty)"}
+          </button>
+        </div>
 
-      <div className="report-actions-row">
         <button
           className="action-btn primary-btn"
           onClick={generate}

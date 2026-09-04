@@ -1,6 +1,14 @@
 "use client";
 
-import { Player, Radar as RadarData, Score } from "../lib/api";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+import {
+  ModelInfoResponse,
+  Player,
+  Radar as RadarData,
+  Score,
+  getMetricLabel,
+} from "../lib/api";
 import { FEATURED_PLAYERS } from "./PlayerPickerModal";
 import PlayerAvatar from "./PlayerAvatar";
 
@@ -19,7 +27,132 @@ type PlayerCardProps = {
   onPickDirect: (p: Player, slotId: "A" | "B") => void;
   onClear: () => void;
   onSwap?: () => void;
+  /** The position classifier's own report card, from /talent/model-info. Passed whole
+      rather than as a list of features so the copy can cite the real sample size and
+      accuracy instead of numbers written into the JSX, which go stale unnoticed. */
+  modelInfo?: ModelInfoResponse | null;
 };
+
+// The percentage beside "Plays like" reads like a rating unless it says otherwise: it is
+// the classifier's confidence that a player's per-90 metrics look like that position
+// group, not the position he is listed in. The badge opens the evidence rather than
+// asserting it — the metrics that decide position, and where this player sits on each.
+const STYLE_HINT = "Why this style? See the metrics that decided it.";
+
+/** The evidence behind "Plays like X", opened as a modal like Dataset Coverage.
+
+    Same shell as that one on purpose: the dashboard already teaches that a badge with an
+    overlay behind it is how detail is reached, and a second, differently-shaped popover
+    would be a new thing to learn for no reason.
+
+    Rendered through a portal because the card carries `backdrop-filter: blur(16px)`, and
+    a filtered element becomes the containing block for `position: fixed` descendants —
+    the overlay would centre itself inside the card instead of the viewport. Dataset
+    Coverage escapes this only because the header happens not to be filtered. */
+function StyleEvidence({
+  playerName,
+  styleText,
+  radar,
+  modelInfo,
+  themeColor,
+  onClose,
+}: {
+  playerName: string;
+  styleText: string;
+  radar: RadarData;
+  modelInfo: ModelInfoResponse;
+  themeColor: string;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  if (typeof document === "undefined") return null;
+
+  const features = modelInfo.top_features ?? [];
+  const pool = modelInfo.n_train + modelInfo.n_test;
+  // Bars are drawn against the strongest metric, not against 1.0: |SHAP| is an absolute
+  // effect on the model's output, so its scale means nothing without a reference.
+  const strongest = Math.max(...features.map((f) => f.mean_abs_shap), 0.0001);
+
+  return createPortal(
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="style-modal-card" onClick={(e) => e.stopPropagation()}>
+        <div className="picker-modal-header">
+          <div>
+            <div className="coverage-header-pill" style={{ color: themeColor }}>
+              Plays like {styleText}
+            </div>
+            <h3 className="picker-title">{playerName}</h3>
+          </div>
+          <button type="button" className="picker-close-btn" onClick={onClose} aria-label="Close">
+            ✕
+          </button>
+        </div>
+
+        <div className="style-modal-body">
+          <p className="why-note">
+            The position classifier is an <strong>XGBoost</strong> model trained on the 17
+            per-90 metrics. <strong>TreeSHAP</strong> — the exact attribution method for
+            tree ensembles — measures how much each metric moves its prediction, and these
+            are the five largest by mean |SHAP| over all {pool.toLocaleString()} player
+            seasons. They are what decides position <em>in general</em>, not for this player.
+          </p>
+
+          <ul className="why-list why-list-head">
+            <li>
+              <span>Metric</span>
+              <span>Weight in the model</span>
+              <span className="why-pct">His rank</span>
+            </li>
+          </ul>
+
+          <ul className="why-list">
+            {features.map((f) => {
+              const metric = radar.metrics[f.feature];
+              const percentile = metric ? Math.round(metric.percentile) : null;
+              return (
+                <li key={f.feature}>
+                  <span className="why-metric">{getMetricLabel(f.feature)}</span>
+                  <span className="why-shap">
+                    <span className="why-bar">
+                      <span
+                        style={{
+                          width: `${(f.mean_abs_shap / strongest) * 100}%`,
+                          background: themeColor,
+                        }}
+                      />
+                    </span>
+                    <span className="why-shap-value">{f.mean_abs_shap.toFixed(2)}</span>
+                  </span>
+                  <span className="why-pct">
+                    {percentile === null ? "—" : `${percentile}th`}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+
+          <p className="why-note">
+            The right column is his percentile among {radar.position_group}s. A metric only
+            explains <em>him</em> when both are high: one the model leans on but he ranks
+            low on is a reason it looked elsewhere.
+          </p>
+
+          <div className="chartnote">
+            Held-out accuracy {(modelInfo.test_accuracy * 100).toFixed(1)}% over{" "}
+            {modelInfo.classes.join(" / ")}. Percentiles are within the position group,
+            among players above the minutes floor.
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
 
 export default function PlayerCard({
   slotId,
@@ -30,7 +163,9 @@ export default function PlayerCard({
   onPickDirect,
   onClear,
   onSwap,
+  modelInfo,
 }: PlayerCardProps) {
+  const [showWhy, setShowWhy] = useState(false);
   const isA = slotId === "A";
   const themeColor = isA ? "var(--a)" : "var(--b)";
   // Channels of --a / --b, for the rgba() tints CSS variables cannot be composed into.
@@ -199,7 +334,37 @@ export default function PlayerCard({
         </span>
         <div className="slot-score-side">
           <span className="slot-score-label">Performance score</span>
-          <span className="slot-score-style">Plays like {styleText}</span>
+          <span className="slot-score-style">
+            Plays like {styleText}
+            {modelInfo && (modelInfo.top_features?.length ?? 0) > 0 && (
+              <span className="why-anchor">
+                <button
+                  type="button"
+                  className="info-badge"
+                  aria-label={STYLE_HINT}
+                  aria-expanded={showWhy}
+                  title={STYLE_HINT}
+                  onClick={(e) => {
+                    // The whole card is a click target that switches the active slot.
+                    e.stopPropagation();
+                    setShowWhy((open) => !open);
+                  }}
+                >
+                  i
+                </button>
+                {showWhy && (
+                  <StyleEvidence
+                    playerName={player.name}
+                    styleText={styleText}
+                    radar={radar}
+                    modelInfo={modelInfo}
+                    themeColor={themeColor}
+                    onClose={() => setShowWhy(false)}
+                  />
+                )}
+              </span>
+            )}
+          </span>
         </div>
       </div>
 

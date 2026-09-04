@@ -5,6 +5,10 @@ services:
     plan: free
     region: frankfurt
     buildCommand: pip install -U pip && pip install -e .
+    # Migrations run between build and start. Without this the schema silently drifts:
+    # a deploy that adds a table ships code expecting it against a database that has
+    # never seen it, and the first request that touches it is the one that finds out.
+    preDeployCommand: alembic upgrade head
     startCommand: uvicorn footyvision.api.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
