@@ -107,6 +107,74 @@ def test_find_similar_returns_none_for_unknown_player():
     assert find_similar(_frame(), player_id=999) is None
 
 
+# --- single-club seasons ----------------------------------------------------------------
+
+
+def test_a_single_club_export_is_complete_not_a_fragment(db_session):
+    """StatsBomb publishes some seasons as one club's matches, not one league's.
+
+    The Bundesliga 2015/16 here is Bayer Leverkusen: 34 matches, and two apiece for the
+    seventeen clubs they played. Measured against a full league that reads as 11% of a
+    season, and dropping it would have deleted nineteen players holding complete
+    campaigns — one of them thirty-three appearances. The club's own fixture list is the
+    honest baseline.
+    """
+    from footyvision.db.models import Match, Team
+    from footyvision.db.quality import fragment_seasons, season_facts
+
+    for tid in range(801, 807):
+        db_session.add(Team(id=tid, name=f"Team {tid}"))
+    db_session.flush()
+
+    match_id = 6000
+    # 801 plays everyone home and away; nobody else plays anybody else.
+    for other in range(802, 807):
+        for home, away in ((801, other), (other, 801)):
+            db_session.add(
+                Match(
+                    id=match_id,
+                    competition_id=95,
+                    sb_season_id=1,
+                    home_team_id=home,
+                    away_team_id=away,
+                )
+            )
+            match_id += 1
+    db_session.commit()
+
+    facts = season_facts(db_session)[(95, 1)]
+
+    assert facts.matches == 10
+    assert facts.teams == 6
+    assert facts.focus_team_id == 801
+    # 10 of the 10 that club can play, not 10 of the 30 the league would.
+    assert facts.coverage == 1.0
+    assert (95, 1) not in fragment_seasons(db_session)
+
+
+def test_a_missing_side_does_not_invent_an_extra_club(db_session):
+    """Twenty Ligue 1 matches have no away team recorded.
+
+    Counted as a team, that null becomes a twenty-first club, inflates the expected
+    fixture list from 380 to 420, and drags a 99%-complete season below the threshold.
+    """
+    from footyvision.db.models import Match, Team
+    from footyvision.db.quality import season_facts
+
+    for tid in (811, 812):
+        db_session.add(Team(id=tid, name=f"Team {tid}"))
+    db_session.flush()
+    db_session.add(
+        Match(id=6100, competition_id=96, sb_season_id=1, home_team_id=811, away_team_id=812)
+    )
+    db_session.add(
+        Match(id=6101, competition_id=96, sb_season_id=1, home_team_id=812, away_team_id=None)
+    )
+    db_session.commit()
+
+    assert season_facts(db_session)[(96, 1)].teams == 2
+
+
 # --- fragment seasons ------------------------------------------------------------------
 
 

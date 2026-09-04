@@ -120,6 +120,12 @@ export default function DataCoverage() {
                           >
                             <td>
                               <span className="coverage-comp">{s.competition}</span>
+                              {/* StatsBomb publishes some seasons as a single club's
+                                  matches. Naming the club is the difference between
+                                  "a tenth of the Bundesliga" and "all of Leverkusen's". */}
+                              {s.focus_team && (
+                                <span className="coverage-country">{s.focus_team} only</span>
+                              )}
                               {s.country && <span className="coverage-country">{s.country}</span>}
                             </td>
                             <td className="coverage-season">{s.season}</td>

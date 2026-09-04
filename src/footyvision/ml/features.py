@@ -175,9 +175,16 @@ def _drop_fragment_seasons(session: Session, frame: pd.DataFrame) -> pd.DataFram
     """Remove players whose season is too incomplete to compare anyone against.
 
     Percentiles and z-scores are computed over whichever rows are in this frame, so a
-    fragment does not merely carry its own unreliable numbers — it shifts everybody
-    else's rank. The Bundesliga 2015/16 in this database is 34 games of 306, and its 19
-    players were being ranked against players from four complete seasons.
+    fragment carries more than its own unreliable numbers.
+
+    Nothing in this database currently qualifies, and the near miss is worth recording.
+    The Bundesliga 2015/16 here is 34 matches, which against a league of eighteen clubs
+    reads as 11% of a season — but it is Bayer Leverkusen's export, their full campaign,
+    and its nineteen players are better sampled than the pool median at up to
+    thirty-three appearances. `db.quality` measures a single-club season against that
+    club's own fixture list for exactly this reason. Dropping it would have deleted
+    complete seasons, and measurement said the ranks it supposedly distorted moved by at
+    most 0.8 of a percentile point anyway.
     """
     threshold = get_settings().min_season_coverage
     if threshold <= 0 or frame.empty:

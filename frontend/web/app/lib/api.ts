@@ -154,6 +154,8 @@ export type CoverageSeason = {
   players: number;
   coverage: number;
   complete: boolean;
+  /** Set when the export covers one club rather than a league. */
+  focus_team?: string | null;
 };
 
 export type CatalogueEntry = {

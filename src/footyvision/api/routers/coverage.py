@@ -9,13 +9,13 @@ against the number of matches a full double round-robin of its teams would have.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import func, select, union
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from footyvision.api.schemas import CatalogueEntry, CoverageResponse, CoverageSeason
 from footyvision.db.base import get_session
-from footyvision.db.models import Competition, Match, PlayerSeasonStats, Season
-from footyvision.db.quality import COMPLETE_THRESHOLD
+from footyvision.db.models import Competition, PlayerSeasonStats, Season, Team
+from footyvision.db.quality import COMPLETE_THRESHOLD, season_facts
 
 # What StatsBomb Open Data offers, checked against the live competition list on this date.
 # A snapshot rather than a live call: listing every season costs one HTTP request each, and
@@ -60,34 +60,10 @@ router = APIRouter(tags=["coverage"])
 
 @router.get("/coverage", response_model=CoverageResponse)
 def coverage(session: Session = Depends(get_session)) -> CoverageResponse:
-    match_counts = {
-        (r.competition_id, r.sb_season_id): r.n
-        for r in session.execute(
-            select(
-                Match.competition_id,
-                Match.sb_season_id,
-                func.count().label("n"),
-            ).group_by(Match.competition_id, Match.sb_season_id)
-        )
-    }
-
-    # UNION (not UNION ALL) dedupes, so counting its rows counts distinct teams.
-    sides = union(
-        select(
-            Match.competition_id.label("cid"),
-            Match.sb_season_id.label("sid"),
-            Match.home_team_id.label("tid"),
-        ),
-        select(Match.competition_id, Match.sb_season_id, Match.away_team_id),
-    ).subquery()
-    team_counts = {
-        (r.cid, r.sid): r.n
-        for r in session.execute(
-            select(sides.c.cid, sides.c.sid, func.count(sides.c.tid).label("n")).group_by(
-                sides.c.cid, sides.c.sid
-            )
-        )
-    }
+    # Counted in db.quality rather than here, because `load_feature_frame` decides what
+    # enters the comparison pool from the same numbers, and two copies of this arithmetic
+    # drifted apart: the one here read a null away side as an extra club.
+    facts = season_facts(session)
 
     player_counts = {
         (r.competition_id, r.sb_season_id): r.n
@@ -113,14 +89,12 @@ def coverage(session: Session = Depends(get_session)) -> CoverageResponse:
         )
     }
 
+    team_names = {t.id: t.name for t in session.scalars(select(Team))}
+
     seasons: list[CoverageSeason] = []
-    for key, matches in match_counts.items():
+    for key, fact in facts.items():
         competition_id, season_id = key
-        teams = team_counts.get(key, 0)
         competition, country, season = names.get(key, ("Unknown", None, str(season_id)))
-        # A double round-robin is teams * (teams - 1) matches; fewer teams, no baseline.
-        expected = teams * (teams - 1) if teams > 1 else 0
-        ratio = min(matches / expected, 1.0) if expected else 0.0
         seasons.append(
             CoverageSeason(
                 competition_id=competition_id,
@@ -128,11 +102,15 @@ def coverage(session: Session = Depends(get_session)) -> CoverageResponse:
                 country=country,
                 season_id=season_id,
                 season=season,
-                matches=matches,
-                teams=teams,
+                matches=fact.matches,
+                teams=fact.teams,
                 players=player_counts.get(key, 0),
-                coverage=round(ratio, 3),
-                complete=ratio >= COMPLETE_THRESHOLD,
+                coverage=round(fact.coverage, 3),
+                complete=fact.coverage >= COMPLETE_THRESHOLD,
+                # Named when the export covers one club rather than a league, so the
+                # reader is told "Bayer Leverkusen, in full" instead of being shown a
+                # league that looks nine tenths missing.
+                focus_team=team_names.get(fact.focus_team_id) if fact.focus_team_id else None,
             )
         )
 
@@ -141,7 +119,7 @@ def coverage(session: Session = Depends(get_session)) -> CoverageResponse:
 
     # A tournament has no round-robin to measure against, so completeness there is a
     # property of the source, not something to recompute from the match count.
-    loaded_keys = set(match_counts)
+    loaded_keys = set(facts)
     catalogue = [
         CatalogueEntry(
             competition_id=cid,

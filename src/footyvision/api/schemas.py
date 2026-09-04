@@ -216,6 +216,10 @@ class CoverageSeason(BaseModel):
     players: int
     coverage: float
     complete: bool
+    # Set when the export is one club's season rather than a league's. The Bundesliga
+    # 2015/16 here is Bayer Leverkusen's 34 matches, which against a league baseline reads
+    # as 11% of a season and is in fact all of one.
+    focus_team: str | None = None
 
 
 class CatalogueEntry(BaseModel):
