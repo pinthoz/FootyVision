@@ -100,7 +100,8 @@ def enrich_cmd(
         console.print(
             f"[green]{stats['nicknames']} nicknames and {stats['countries']} countries "
             f"filled from {stats['matches_read']} matches "
-            f"({stats['still_missing']} players still without either).[/green]"
+            f"({stats['still_missing']} players still without either, "
+            f"{stats['unavailable']} lineups unavailable).[/green]"
         )
 
         if birthdates:
