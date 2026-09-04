@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Archivo, Inter } from "next/font/google";
+import { SpeedInsights } from "@vercel/speed-insights/next";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 // Signage face for the wordmark, panel eyebrows and scores. A grotesque rather than a
@@ -35,6 +37,8 @@ export default function RootLayout({
         {/* Decorative pitch markings behind the dashboard. */}
         <div className="pitch-markings" aria-hidden="true" />
         {children}
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );
