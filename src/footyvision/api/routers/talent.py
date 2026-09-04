@@ -14,6 +14,7 @@ from footyvision.db.base import get_session
 from footyvision.ml.features import load_feature_frame
 from footyvision.ml.scoring import performance_score, rank_players
 from footyvision.ml.talent import (
+    get_cached_exact_model,
     get_cached_importance,
     get_cached_model,
     get_cached_role_model,
@@ -44,12 +45,16 @@ def player_score(
     best_role, confidence = (None, None)
     if roles:
         best_role, confidence = max(roles.items(), key=lambda kv: kv[1])
+    exact = style_profile(get_cached_exact_model(frame), frame, player_id) or {}
+    shortlist = [name for name, _ in sorted(exact.items(), key=lambda kv: -kv[1])[:3]]
     return ScoreResponse(
         **score,
         style_profile=profile,
         predicted_role=best_role,
         role_confidence=confidence,
         role_profile=roles,
+        predicted_position=shortlist[0] if shortlist else None,
+        position_shortlist=shortlist,
     )
 
 
@@ -74,6 +79,7 @@ def model_info(
     frame = _frame(session, min_minutes)
     tm = get_cached_model(frame)
     rm = get_cached_role_model(frame)
+    em = get_cached_exact_model(frame)
     return ModelInfoResponse(
         task="position-group classification",
         classes=tm.classes,
@@ -87,5 +93,14 @@ def model_info(
             test_accuracy=round(rm.test_accuracy, 3),
             n_train=rm.n_train,
             n_test=rm.n_test,
+        ),
+        exact_model=RoleModelInfo(
+            classes=em.classes,
+            test_accuracy=round(em.test_accuracy, 3),
+            n_train=em.n_train,
+            n_test=em.n_test,
+            top3_accuracy=(
+                round(em.top3_accuracy, 3) if em.top3_accuracy is not None else None
+            ),
         ),
     )

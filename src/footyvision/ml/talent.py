@@ -73,6 +73,10 @@ class TalentModel:
     n_test: int
     target: str = "position_group"
     calibrator: CalibratedClassifierCV | None = None
+    # Share of held-out players whose true class is among the model's three best guesses.
+    # With 21 exact positions a single-label score understates a model that is useful
+    # anyway: a scout accepts "one of these three" and works from there.
+    top3_accuracy: float | None = None
 
     def predict_proba(self, x):
         """Calibrated probabilities when available, raw ones otherwise."""
@@ -135,7 +139,21 @@ def train_position_classifier(
 
     scorer = calibrator or model
     acc = float(accuracy_score(y_te, scorer.predict(x_te)))
-    return TalentModel(model, classes, features, acc, len(x_tr), len(x_te), target, calibrator)
+    top3 = _top_k_accuracy(scorer.predict_proba(x_te), y_te, k=3)
+    return TalentModel(
+        model, classes, features, acc, len(x_tr), len(x_te), target, calibrator, top3
+    )
+
+
+def _top_k_accuracy(proba: np.ndarray, y_true: np.ndarray, k: int = 3) -> float:
+    """Whether the true class is among the k highest-scoring ones.
+
+    Returns 1.0 when there are k classes or fewer, because the question is then vacuous.
+    """
+    if proba.shape[1] <= k:
+        return 1.0
+    best = np.argsort(-proba, axis=1)[:, :k]
+    return float(np.mean([truth in row for truth, row in zip(y_true, best, strict=True)]))
 
 
 def _calibratable(y_tr) -> bool:
@@ -220,45 +238,62 @@ _CACHE: dict[str, TalentModel] = {}
 _SHAP_CACHE: dict[str, list[dict[str, Any]]] = {}
 
 
+def _cached(key: str, filename: str, target: str, frame: pd.DataFrame) -> TalentModel:
+    """Serve a model from memory, then from disk, and only then pay to fit it.
+
+    The disk copy is discarded when it no longer matches the data in front of it. Checking
+    only that the features still exist is not enough: loading a new competition leaves the
+    columns identical while changing every percentile the model was fitted against, and a
+    stale model would then be served indefinitely with no visible symptom.
+    """
+    if key in _CACHE:
+        return _CACHE[key]
+
+    eligible = int((frame[target] != "Unknown").sum()) if target in frame.columns else len(frame)
+    disk_path = MODELS_DIR / filename
+    if disk_path.is_file():
+        try:
+            loaded = joblib.load(disk_path)
+            fits_columns = isinstance(loaded, TalentModel) and set(loaded.features).issubset(
+                frame.columns
+            )
+            # Rows are dropped for tiny classes and unknown targets, so an exact match is
+            # too strict; a pool that moved by more than a few percent is a different pool.
+            fitted_on = loaded.n_train + loaded.n_test if fits_columns else 0
+            if fits_columns and abs(fitted_on - eligible) <= max(5, 0.02 * eligible):
+                _CACHE[key] = loaded
+        except Exception:
+            pass
+
+    if key not in _CACHE:
+        _CACHE[key] = train_position_classifier(frame, target=target)
+        try:
+            MODELS_DIR.mkdir(parents=True, exist_ok=True)
+            joblib.dump(_CACHE[key], disk_path, compress=3)
+        except Exception:
+            pass
+    return _CACHE[key]
+
+
 def get_cached_model(frame: pd.DataFrame) -> TalentModel:
-    if "model" not in _CACHE:
-        disk_path = MODELS_DIR / "position_group.joblib"
-        if disk_path.is_file():
-            try:
-                loaded = joblib.load(disk_path)
-                if isinstance(loaded, TalentModel) and set(loaded.features).issubset(frame.columns):
-                    _CACHE["model"] = loaded
-            except Exception:
-                pass
-        if "model" not in _CACHE:
-            _CACHE["model"] = train_position_classifier(frame)
-            try:
-                MODELS_DIR.mkdir(parents=True, exist_ok=True)
-                joblib.dump(_CACHE["model"], disk_path, compress=3)
-            except Exception:
-                pass
-    return _CACHE["model"]
+    """The four broad position groups — the model the dashboard shows by default."""
+    return _cached("model", "position_group.joblib", "position_group", frame)
 
 
 def get_cached_role_model(frame: pd.DataFrame) -> TalentModel:
     """The finer-grained sibling: ten side-agnostic roles instead of four groups."""
-    if "role" not in _CACHE:
-        disk_path = MODELS_DIR / "position_role.joblib"
-        if disk_path.is_file():
-            try:
-                loaded = joblib.load(disk_path)
-                if isinstance(loaded, TalentModel) and set(loaded.features).issubset(frame.columns):
-                    _CACHE["role"] = loaded
-            except Exception:
-                pass
-        if "role" not in _CACHE:
-            _CACHE["role"] = train_position_classifier(frame, target="position_role")
-            try:
-                MODELS_DIR.mkdir(parents=True, exist_ok=True)
-                joblib.dump(_CACHE["role"], disk_path, compress=3)
-            except Exception:
-                pass
-    return _CACHE["role"]
+    return _cached("role", "position_role.joblib", "position_role", frame)
+
+
+def get_cached_exact_model(frame: pd.DataFrame) -> TalentModel:
+    """The hardest cut: the exact StatsBomb position, left and right included.
+
+    Around 49% against a 5% coin-flip baseline, and the ceiling is the data rather than
+    the model — roughly half the remaining errors are pure left/right swaps, because
+    preferred foot is the only feature that carries a side at all. Reported alongside
+    top-3, which is the number a scout can act on.
+    """
+    return _cached("exact", "primary_position.joblib", "primary_position", frame)
 
 
 def get_cached_importance(
