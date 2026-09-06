@@ -338,3 +338,46 @@ def test_cors_allows_vercel_origins():
     assert (
         response.headers.get("access-control-allow-origin") == "https://footy-vision-tau.vercel.app"
     )
+def test_team_strength_rates_the_side_that_keeps_winning(client, db_session):
+    """Ratings come from the fixtures, so an empty database must not fabricate any."""
+    from footyvision.db.models import Match, PlayerMatchStats, Team
+
+    assert client.get("/teams/strength").json()["teams"] == []
+
+    db_session.add_all([Team(id=910, name="Strong"), Team(id=911, name="Weak")])
+    db_session.flush()
+    for i in range(12):
+        home, away = (910, 911) if i % 2 == 0 else (911, 910)
+        db_session.add(
+            Match(
+                id=9000 + i,
+                competition_id=1,
+                sb_season_id=1,
+                home_team_id=home,
+                away_team_id=away,
+            )
+        )
+        # Strong scores three and concedes none, whichever end it plays at. A different
+        # player per side: (match, player) is unique, so one cannot appear for both.
+        for player_id, team, goals in ((1, 910, 3), (2, 911, 0)):
+            db_session.add(
+                PlayerMatchStats(
+                    match_id=9000 + i,
+                    player_id=player_id,
+                    team_id=team,
+                    minutes=90,
+                    goals=goals,
+                )
+            )
+    db_session.commit()
+
+    from footyvision.api.routers import teams as teams_router
+
+    teams_router._CACHE.clear()
+    body = client.get("/teams/strength").json()
+
+    rated = {t["name"]: t for t in body["teams"]}
+    assert rated["Strong"]["attack"] > rated["Weak"]["attack"]
+    # Negative defence means conceding less than average — the sign that catches people out.
+    assert rated["Strong"]["defence"] < rated["Weak"]["defence"]
+    teams_router._CACHE.clear()

@@ -15,6 +15,7 @@ from footyvision.api.routers import (
     search,
     similarity,
     talent,
+    teams,
 )
 from footyvision.config import get_settings
 
@@ -48,6 +49,7 @@ app.include_router(search.router)
 app.include_router(talent.router)
 app.include_router(metrics.router)
 app.include_router(assistant.router)
+app.include_router(teams.router)
 
 # After the routers, because the page is built from the schema they define.
 docs.install(app)

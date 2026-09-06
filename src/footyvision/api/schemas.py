@@ -243,3 +243,21 @@ class CoverageResponse(BaseModel):
     seasons: list[CoverageSeason]
     catalogue: list[CatalogueEntry]
     catalogue_verified: str
+class TeamStrengthOut(BaseModel):
+    team_id: int
+    name: str
+    competition: str | None = None
+    # Log-scale Poisson coefficients: 0 is an average side, a positive attack scores more
+    # than average, and a negative defence concedes less. The defence sign catches people
+    # out, so it is stated wherever these are rendered.
+    attack: float
+    defence: float
+    matches: int
+
+
+class TeamStrengthResponse(BaseModel):
+    # Also on the log scale: exp() of it is the factor applied to a side's goal rate at
+    # home, which comes out around 1.26 on this data.
+    home_advantage: float
+    matches: int
+    teams: list[TeamStrengthOut] = []
