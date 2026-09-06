@@ -31,11 +31,12 @@ def test_player_query_tolerates_llm_nulls():
     assert q.position_group is None
 
 
-def _row(pid, name, comp, position, minutes, **feats) -> dict:
+def _row(pid, name, comp, position, minutes, gender="male", **feats) -> dict:
     d = {
         "player_id": pid,
         "name": name,
         "competition": comp,
+        "gender": gender,
         "competition_id": 1,
         "sb_season_id": 1,
         "primary_position": position,
@@ -54,8 +55,28 @@ def _frame() -> pd.DataFrame:
             _row(1, "Winger A", "La Liga", "Right Wing", 2500, xg_per90=0.30, dribbles_per90=5.0),
             _row(2, "Winger B", "La Liga", "Left Wing", 2500, xg_per90=0.20, dribbles_per90=6.0),
             _row(3, "Striker C", "Bundesliga", "Center Forward", 2500, xg_per90=0.55),
+            _row(
+                4,
+                "Alexia Star",
+                "Liga F",
+                "Center Forward",
+                2000,
+                gender="female",
+                xg_per90=0.85,
+                shots_per90=3.2,
+            ),
         ]
     )
+
+
+def test_execute_query_filters_by_gender(monkeypatch):
+    monkeypatch.setattr(query, "load_feature_frame", lambda *a, **k: _frame())
+    q = PlayerQuery(
+        gender="female", conditions=[Condition(field="shots_per90", op="gt", value=0.8)]
+    )
+    rows = execute_query(session=None, query=q)
+    assert [r["name"] for r in rows] == ["Alexia Star"]
+    assert rows[0]["gender"] == "female"
 
 
 def test_execute_query_filters_group_competition_and_condition(monkeypatch):
@@ -95,6 +116,13 @@ def test_parse_nl_extracts_fenced_json():
     assert q.position_group == "FWD"
     assert q.conditions[0].field == "xg_per90"
     assert q.limit == 10
+
+
+def test_parse_nl_extracts_gender():
+    payload = '{"conditions": [{"field": "shots_per90", "op": "gt", "value": 0.8}]}'
+    q = parse_nl("Female player that has more than 0.8 pct shots", client=_FakeClient(payload))
+    assert q.gender == "female"
+    assert q.conditions[0].field == "shots_per90"
 
 
 def test_parse_nl_rejects_invalid_field():

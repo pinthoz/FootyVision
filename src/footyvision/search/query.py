@@ -49,6 +49,7 @@ class Condition(BaseModel):
 
 class PlayerQuery(BaseModel):
     position_group: Literal["GK", "DEF", "MID", "FWD"] | None = None
+    gender: Literal["male", "female"] | None = None
     # Categorical, so it is an equality filter rather than a numeric condition.
     foot: Literal["left", "right", "both"] | None = None
     competition: str | None = Field(None, description="Substring matched against league name.")
@@ -91,6 +92,8 @@ def execute_query(session: Session, query: PlayerQuery) -> list[dict[str, Any]]:
         frame = frame[frame["competition"].str.contains(query.competition, case=False, na=False)]
     if query.position_group:
         frame = frame[frame["position_group"] == query.position_group]
+    if query.gender and "gender" in frame.columns:
+        frame = frame[frame["gender"].astype(str).str.lower() == query.gender.lower()]
     if query.foot:
         frame = frame[frame["foot"] == query.foot]
     if query.nationality:
@@ -120,6 +123,7 @@ def execute_query(session: Session, query: PlayerQuery) -> list[dict[str, Any]]:
                 "competition": r["competition"],
                 "primary_position": r["primary_position"],
                 "position_group": r["position_group"],
+                "gender": r.get("gender"),
                 "nationality": r.get("nationality"),
                 "stats": {f: round(float(r[f]), 3) for f in sorted(referenced)},
             }

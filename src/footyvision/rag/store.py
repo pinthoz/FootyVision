@@ -56,6 +56,13 @@ _COMMON_WORDS: frozenset[str] = frozenset(
 )
 
 
+# Above this many players sharing a name part, the part names a family rather than a
+# person. Chosen from the pool's own distribution: 94% of tokens belong to three players
+# or fewer, and every genuinely identifying name — messi, neymar, kante, putellas —
+# belongs to exactly one.
+MAX_PLAYERS_PER_TOKEN = 3
+
+
 def _normalize(matrix: np.ndarray) -> np.ndarray:
     norms = np.linalg.norm(matrix, axis=1, keepdims=True)
     norms[norms == 0] = 1.0
@@ -81,6 +88,9 @@ class VectorStore:
         # before these existed has none, and a ragged column of Nones is exactly the
         # "this dimension is unknown" case the filters already handle.
         self.metrics = list(attrs.get("metrics") or [None] * n)
+        # Built on first use: one pass over every name, and only questions that name a
+        # player ever need it.
+        self._common_names: frozenset[str] | None = None
 
     def __len__(self) -> int:
         return len(self.ids)
@@ -115,6 +125,28 @@ class VectorStore:
             },
         )
 
+    def _shared_tokens(self) -> frozenset[str]:
+        """Name parts too many players share to identify any one of them.
+
+        Read off the index rather than listed by hand, because which names are common is a
+        property of who was loaded. In this pool 81% of name tokens belong to exactly one
+        player and 94% to three or fewer; past that the tail is Iberian given names and
+        patronymics — silva (43 players), maria (35), jose (35), suarez (8).
+
+        Without this, "compare Neymar and Luis Suarez" pinned nineteen players, every one
+        of them carrying "Luis" or "Suarez" somewhere in their name. The assistant then
+        queried with the centroid of all nineteen and answered about none of them.
+        """
+        if self._common_names is None:
+            counts: dict[str, int] = {}
+            for name in self.names:
+                for token in {t for t in _name_tokens(str(name)) if len(t) >= 4}:
+                    counts[token] = counts.get(token, 0) + 1
+            self._common_names = frozenset(
+                token for token, n in counts.items() if n > MAX_PLAYERS_PER_TOKEN
+            )
+        return self._common_names
+
     def mentioned(self, question: str) -> list[Hit]:
         """Players named in the question, matched on a distinctive part of their name.
 
@@ -122,7 +154,7 @@ class VectorStore:
         "like Bale and Bakambu" can miss both. Pinning them is the lexical half of a
         hybrid retrieval: cheap, exact, and it makes comparisons actually answerable.
         """
-        asked = set(_name_tokens(question)) - _COMMON_WORDS
+        asked = set(_name_tokens(question)) - _COMMON_WORDS - self._shared_tokens()
         hits: list[Hit] = []
         for i, name in enumerate(self.names):
             # Skip very short tokens ("de", "da") — only distinctive ones identify a player.

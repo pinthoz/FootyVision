@@ -182,6 +182,28 @@ def test_a_player_whose_surname_is_an_ordinary_word_is_still_findable():
     assert [h.name for h in store.mentioned("how good is Ashley Young?")] == ["Ashley Young"]
 
 
+def test_a_name_many_players_share_pins_none_of_them():
+    """"Compare Neymar and Luis Suarez" used to pin nineteen players.
+
+    Every one of them carried "Luis" or "Suarez" somewhere in their name, and the
+    assistant then queried with the centroid of all nineteen and answered about none. A
+    name part belonging to more than a handful of people identifies a family, not a
+    person — and which parts those are is a property of who was loaded, so it is counted
+    off the index rather than listed by hand.
+    """
+    from footyvision.rag.store import MAX_PLAYERS_PER_TOKEN
+
+    shared = [f"Luis Silva {i}" for i in range(MAX_PLAYERS_PER_TOKEN + 1)]
+    store = _store_with([*shared, "Gareth Frank Bale"])
+
+    assert store.mentioned("compare Luis and Bale") == [
+        h for h in store.mentioned("Bale")
+    ]
+    # One below the threshold is still distinctive enough to pin on.
+    fewer = _store_with([f"Luis Silva {i}" for i in range(MAX_PLAYERS_PER_TOKEN)])
+    assert len(fewer.mentioned("how good is Luis?")) == MAX_PLAYERS_PER_TOKEN
+
+
 def test_pinning_still_finds_the_players_a_comparison_names():
     store = _store_with(["Gareth Frank Bale", "Cedric Bakambu", "Ashley Young"])
 
@@ -391,6 +413,25 @@ def test_prompt_lists_the_asked_for_metric_apart_from_the_profiles():
 
     assert "The metric asked about" in user
     assert "Anchor: tackles 3.41 per 90." in user
+
+
+def test_the_prompt_forbids_reading_the_shortlist_as_a_census():
+    """Asked for young players in Liga F, the assistant said the league was not in the data.
+
+    It is: 275 players. The age filter had removed every one of them, because no woman in
+    this database has a recorded date of birth, so the six retrieved were men from other
+    leagues — described accurately, and used to conclude something false about the dataset.
+    Disclosing the exclusion was not enough on its own.
+    """
+    from footyvision.rag.assistant import build_prompt
+    from footyvision.rag.constraints import Constraints
+
+    system, _ = build_prompt(
+        "young players in Liga F", [], Constraints(max_age=23.0), {"age": 1154}
+    )
+
+    assert "NOT the whole database" in system
+    assert "Never say a competition" in system
 
 
 def test_accented_and_unaccented_spellings_are_the_same_word():

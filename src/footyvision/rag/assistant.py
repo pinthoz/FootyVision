@@ -48,6 +48,15 @@ def build_prompt(
             f" Note that {missing}, so they could not be checked against this requirement "
             "and were left out of the search. End your answer with one short sentence "
             "saying so, phrased as a limit of the data rather than a judgement on them."
+            # Without this the model reads its own shortlist as a census. Asked for young
+            # players in Liga F it answered "no players in the dataset play in Liga F" —
+            # false, there are 275 of them; the age filter had removed every one, because
+            # no woman in this data has a recorded date of birth. The retrieved six were
+            # men, and it described them accurately and concluded something untrue.
+            " The players shown are what survived that filter, NOT the whole database. "
+            "Never say a competition, country or group is absent from the dataset merely "
+            "because none of the retrieved players belongs to it — say instead that the "
+            "requirement could not be checked for them."
         )
     context = "\n".join(f"- {h.text}" for h in hits) or "(no player matches the requirement)"
     user = f"Question: {question}\n\nRetrieved players (context):\n{context}\n"
