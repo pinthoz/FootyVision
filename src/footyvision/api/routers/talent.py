@@ -62,12 +62,13 @@ def player_score(
 def rankings(
     position_group: str | None = Query(None, description="GK / DEF / MID / FWD"),
     top_n: int = Query(20, ge=1, le=100),
+    gender: str | None = Query(None, description="all / female / male"),
     min_minutes: float | None = Query(None),
     session: Session = Depends(get_session),
 ) -> RankingsResponse:
-    """Leaderboard by Performance Score, optionally within one position group."""
+    """Leaderboard by Performance Score, optionally within one position group and/or gender."""
     frame = _frame(session, min_minutes)
-    results = rank_players(frame, position_group, top_n)
+    results = rank_players(frame, position_group, top_n, gender=gender)
     return RankingsResponse(count=len(results), results=results)
 
 

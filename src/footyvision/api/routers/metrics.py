@@ -38,8 +38,10 @@ def metric_distribution(
         count=len(frame),
         values=[
             DistributionPoint(
+                id=f"{int(r['player_id'])}-{int(r['competition_id'])}-{int(r['sb_season_id'])}",
                 player_id=int(r["player_id"]),
                 name=r["name"],
+                competition=r.get("competition"),
                 value=round(float(r[metric]), 3),
             )
             for _, r in frame.iterrows()

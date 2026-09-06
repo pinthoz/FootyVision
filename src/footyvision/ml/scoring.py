@@ -108,18 +108,24 @@ def performance_score(frame: pd.DataFrame, player_id: int) -> dict[str, Any] | N
 
 
 def rank_players(
-    frame: pd.DataFrame, position_group: str | None = None, top_n: int = 20
+    frame: pd.DataFrame,
+    position_group: str | None = None,
+    top_n: int = 20,
+    gender: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Top players by performance score, optionally within one position group."""
+    """Top players by performance score, optionally within one position group and/or gender."""
     scored = score_frame(frame)
     if position_group:
         scored = scored[scored["position_group"] == position_group]
+    if gender and gender.lower() != "all" and "gender" in scored.columns:
+        scored = scored[scored["gender"].astype(str).str.lower() == gender.lower()]
     scored = scored.sort_values("performance_score", ascending=False).head(top_n)
     return [
         {
             "player_id": int(r["player_id"]),
             "name": r["name"],
             "competition": r.get("competition"),
+            "gender": r.get("gender"),
             "position_group": r["position_group"],
             "primary_position": r["primary_position"],
             "performance_score": float(r["performance_score"]),

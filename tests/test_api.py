@@ -67,6 +67,34 @@ def test_list_players_can_exclude_players_without_a_season_aggregate(client, db_
     assert len(selectable) == 6
 
 
+def test_list_players_filters_by_gender(client, db_session):
+    from footyvision.db.models import METRIC_COLUMNS, Competition, Player, PlayerSeasonStats
+
+    db_session.add(Competition(id=99, name="Liga F", country="Spain", gender="female"))
+    db_session.add(Player(id=99, name="Alexia Star", country="Spain"))
+    per90 = {f"{m}_per90": 0.0 for m in METRIC_COLUMNS}
+    db_session.add(
+        PlayerSeasonStats(
+            player_id=99,
+            competition_id=99,
+            sb_season_id=1,
+            primary_position="Center Forward",
+            matches_played=20,
+            minutes=1800.0,
+            **per90,
+        )
+    )
+    db_session.commit()
+
+    female_players = client.get("/players", params={"gender": "female"}).json()
+    assert len(female_players) == 1
+    assert female_players[0]["name"] == "Alexia Star"
+    assert female_players[0]["gender"] == "female"
+
+    all_players = client.get("/players").json()
+    assert any(p["name"] == "Alexia Star" for p in all_players)
+
+
 def test_list_players_rejects_out_of_range_limit(client):
     assert client.get("/players", params={"limit": 500}).status_code == 422
 

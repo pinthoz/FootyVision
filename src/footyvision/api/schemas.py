@@ -11,6 +11,7 @@ class PlayerOut(BaseModel):
     id: int
     name: str
     country: str | None = None
+    gender: str | None = None
 
 
 class SeasonStatsOut(BaseModel):
@@ -96,6 +97,7 @@ class SearchResultRow(BaseModel):
     competition: str | None
     primary_position: str | None
     position_group: str
+    gender: str | None = None
     nationality: str | None = None
     stats: dict[str, float]
 
@@ -129,6 +131,7 @@ class RankingRow(BaseModel):
     position_group: str
     primary_position: str | None
     performance_score: float
+    gender: str | None = None
 
 
 class RankingsResponse(BaseModel):
@@ -191,8 +194,12 @@ class AssistantResponse(BaseModel):
 
 
 class DistributionPoint(BaseModel):
+    # Unique per row, which the player id is not: eleven players changed league mid-season
+    # and hold one player-season in each, so a chart keyed on player_id drops one of them.
+    id: str
     player_id: int
     name: str
+    competition: str | None = None
     value: float
 
 
