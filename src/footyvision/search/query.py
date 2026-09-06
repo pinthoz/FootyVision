@@ -97,9 +97,7 @@ def execute_query(session: Session, query: PlayerQuery) -> list[dict[str, Any]]:
     if query.foot:
         frame = frame[frame["foot"] == query.foot]
     if query.nationality:
-        frame = frame[
-            frame["nationality"].str.contains(query.nationality, case=False, na=False)
-        ]
+        frame = frame[frame["nationality"].str.contains(query.nationality, case=False, na=False)]
     for cond in query.conditions:
         frame = frame[_OPS[cond.op](frame[cond.field], cond.value)]
 

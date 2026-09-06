@@ -105,8 +105,10 @@ _POSITION_PATTERNS = (
     # "medio ala" is a midfielder, not a wing-back: the earliest-mention rule settles it,
     # because "medio" is read before "ala" and the first position word in the sentence wins.
     (
-        re.compile(r"\b(midfield(er)?|playmaker|holding|regista|medio|meio[\s-]?campo|"
-                   r"meia|trinco)s?\b"),
+        re.compile(
+            r"\b(midfield(er)?|playmaker|holding|regista|medio|meio[\s-]?campo|"
+            r"meia|trinco)s?\b"
+        ),
         "MID",
     ),
     (
@@ -186,8 +188,7 @@ _DEMONYMS: dict[str, str] = {
 }
 
 _DEMONYM_PATTERNS = tuple(
-    (re.compile(rf"\b(?:{alternatives})\b"), country)
-    for alternatives, country in _DEMONYMS.items()
+    (re.compile(rf"\b(?:{alternatives})\b"), country) for alternatives, country in _DEMONYMS.items()
 )
 
 

@@ -100,8 +100,6 @@ def model_info(
             test_accuracy=round(em.test_accuracy, 3),
             n_train=em.n_train,
             n_test=em.n_test,
-            top3_accuracy=(
-                round(em.top3_accuracy, 3) if em.top3_accuracy is not None else None
-            ),
+            top3_accuracy=(round(em.top3_accuracy, 3) if em.top3_accuracy is not None else None),
         ),
     )

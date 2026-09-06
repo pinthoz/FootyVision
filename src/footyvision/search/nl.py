@@ -15,9 +15,7 @@ from footyvision.search.query import SEARCHABLE_FIELDS, PlayerQuery
 _FEMALE_RE = re.compile(
     r"\b(female|women|woman|mulher|mulheres|jogadora|jogadoras|feminin[oa]s?)\b", re.IGNORECASE
 )
-_MALE_RE = re.compile(
-    r"\b(male|men|man|homem|homens|masculin[oa]s?)\b", re.IGNORECASE
-)
+_MALE_RE = re.compile(r"\b(male|men|man|homem|homens|masculin[oa]s?)\b", re.IGNORECASE)
 
 
 class NLParseError(ValueError):

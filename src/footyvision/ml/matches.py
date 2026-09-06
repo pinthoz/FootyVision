@@ -48,8 +48,20 @@ MIN_PRIOR_MATCHES = 4
 # Levels *and* differences. A contest is about the gap, and making a linear model rebuild
 # the subtraction from two noisy columns wastes the only thing it is good at.
 FEATURES = (
-    "d_pts", "d_gf", "d_ga", "d_xgf", "d_xga", "d_sf", "d_sa", "d_xg_net",
-    "h_pts", "a_pts", "h_xgf", "a_xgf", "h_xga", "a_xga",
+    "d_pts",
+    "d_gf",
+    "d_ga",
+    "d_xgf",
+    "d_xga",
+    "d_sf",
+    "d_sa",
+    "d_xg_net",
+    "h_pts",
+    "a_pts",
+    "h_xgf",
+    "a_xgf",
+    "h_xga",
+    "a_xga",
 )
 
 _RUNNING = ("pts", "gf", "ga", "xgf", "xga", "sf", "sa")
@@ -128,22 +140,46 @@ def _row(match, home: dict[str, float], away: dict[str, float]) -> dict:
         row[f"{prefix}_played"] = played
         for column in _RUNNING:
             row[f"{prefix}_{column}"] = side[column] / played
-    row["y"] = 0 if match.home_goals > match.away_goals else (
-        1 if match.home_goals == match.away_goals else 2
+    row["y"] = (
+        0
+        if match.home_goals > match.away_goals
+        else (1 if match.home_goals == match.away_goals else 2)
     )
     return row
 
 
 def _update(home: dict[str, float], away: dict[str, float], match) -> None:
-    home_points = 3.0 if match.home_goals > match.away_goals else (
-        1.0 if match.home_goals == match.away_goals else 0.0
+    home_points = (
+        3.0
+        if match.home_goals > match.away_goals
+        else (1.0 if match.home_goals == match.away_goals else 0.0)
     )
     away_points = 3.0 - home_points if home_points != 1.0 else 1.0
     for side, values in (
-        (home, (home_points, match.home_goals, match.away_goals, match.home_xg,
-                match.away_xg, match.home_shots, match.away_shots)),
-        (away, (away_points, match.away_goals, match.home_goals, match.away_xg,
-                match.home_xg, match.away_shots, match.home_shots)),
+        (
+            home,
+            (
+                home_points,
+                match.home_goals,
+                match.away_goals,
+                match.home_xg,
+                match.away_xg,
+                match.home_shots,
+                match.away_shots,
+            ),
+        ),
+        (
+            away,
+            (
+                away_points,
+                match.away_goals,
+                match.home_goals,
+                match.away_xg,
+                match.home_xg,
+                match.away_shots,
+                match.home_shots,
+            ),
+        ),
     ):
         side["played"] += 1
         for column, value in zip(_RUNNING, values, strict=True):
@@ -186,8 +222,9 @@ class TeamStrength:
     matches: int
 
 
-def team_strengths(matches: pd.DataFrame, home_advantage_out: dict | None = None
-                   ) -> list[TeamStrength]:
+def team_strengths(
+    matches: pd.DataFrame, home_advantage_out: dict | None = None
+) -> list[TeamStrength]:
     """Poisson attack and defence coefficients, the classical football rating.
 
     Goals are modelled as Poisson with a rate set by the scoring side's attack, the
@@ -230,8 +267,9 @@ def team_strengths(matches: pd.DataFrame, home_advantage_out: dict | None = None
     ]
 
 
-def outcome_probabilities(home_rate: float, away_rate: float, max_goals: int = 10
-                          ) -> tuple[float, float, float]:
+def outcome_probabilities(
+    home_rate: float, away_rate: float, max_goals: int = 10
+) -> tuple[float, float, float]:
     """Home, draw and away probabilities from two Poisson scoring rates.
 
     Summed over a grid of scorelines rather than approximated: the draw is the diagonal,

@@ -71,10 +71,7 @@ def list_players(
         stmt = stmt.order_by(Player.name)
 
     results = session.execute(stmt.limit(limit)).all()
-    return [
-        PlayerOut(id=p.id, name=p.name, country=p.country, gender=g)
-        for p, g in results
-    ]
+    return [PlayerOut(id=p.id, name=p.name, country=p.country, gender=g) for p, g in results]
 
 
 @router.get("/{player_id}", response_model=PlayerOut)

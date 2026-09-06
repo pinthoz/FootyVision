@@ -203,9 +203,7 @@ def backfill_birthdates(session: Session, data_dir: str = "data") -> dict[str, i
         "matched": matched,
         # Counted within the men's pool only: a woman with no date of birth is not an
         # unmatched row, she is outside what this source covers at all.
-        "unmatched": sum(
-            1 for p in players if p.date_of_birth is None and p.id in eligible
-        ),
+        "unmatched": sum(1 for p in players if p.date_of_birth is None and p.id in eligible),
         "outside_export": sum(1 for p in players if p.id not in eligible),
     }
 

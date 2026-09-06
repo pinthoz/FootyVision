@@ -363,9 +363,7 @@ class VectorStore:
         data = np.load(path, allow_pickle=True)
         # Indexes written before the attributes existed have none; degrade, do not crash.
         attrs = {
-            k: data[k]
-            for k in ("foot", "age", "position_group", "nationality")
-            if k in data.files
+            k: data[k] for k in ("foot", "age", "position_group", "nationality") if k in data.files
         }
         if "metrics" in data.files:
             # Stored as JSON strings because numpy has no dtype for a dict; "" is how an

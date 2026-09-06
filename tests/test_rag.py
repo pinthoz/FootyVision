@@ -183,7 +183,7 @@ def test_a_player_whose_surname_is_an_ordinary_word_is_still_findable():
 
 
 def test_a_name_many_players_share_pins_none_of_them():
-    """"Compare Neymar and Luis Suarez" used to pin nineteen players.
+    """ "Compare Neymar and Luis Suarez" used to pin nineteen players.
 
     Every one of them carried "Luis" or "Suarez" somewhere in their name, and the
     assistant then queried with the centroid of all nineteen and answered about none. A
@@ -196,9 +196,7 @@ def test_a_name_many_players_share_pins_none_of_them():
     shared = [f"Luis Silva {i}" for i in range(MAX_PLAYERS_PER_TOKEN + 1)]
     store = _store_with([*shared, "Gareth Frank Bale"])
 
-    assert store.mentioned("compare Luis and Bale") == [
-        h for h in store.mentioned("Bale")
-    ]
+    assert store.mentioned("compare Luis and Bale") == [h for h in store.mentioned("Bale")]
     # One below the threshold is still distinctive enough to pin on.
     fewer = _store_with([f"Luis Silva {i}" for i in range(MAX_PLAYERS_PER_TOKEN)])
     assert len(fewer.mentioned("how good is Luis?")) == MAX_PLAYERS_PER_TOKEN
@@ -284,7 +282,7 @@ def test_feminine_forms_are_read_too():
 
 
 def test_an_ambiguous_word_is_left_unparsed_rather_than_guessed():
-    """"médias" is both female midfielders and averages, and the accents are stripped.
+    """ "médias" is both female midfielders and averages, and the accents are stripped.
 
     Reading it as a position would filter "qual e a media de remates" down to midfielders
     and answer a question nobody asked. Not filtering costs a narrowing; filtering wrongly

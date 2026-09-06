@@ -456,8 +456,12 @@ def test_the_docs_page_is_themed_and_still_generated(client):
     from footyvision.api.docs import SECTIONS
 
     spec = client.get("/openapi.json").json()
-    tagged = {t for methods in spec["paths"].values() for op in methods.values()
-              for t in op.get("tags", [])}
+    tagged = {
+        t
+        for methods in spec["paths"].values()
+        for op in methods.values()
+        for t in op.get("tags", [])
+    }
     mapped = {tag for _, _, tags in SECTIONS for tag in tags}
     assert tagged <= mapped, f"untagged in the docs map: {sorted(tagged - mapped)}"
 

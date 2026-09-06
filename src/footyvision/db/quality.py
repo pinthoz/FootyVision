@@ -64,9 +64,9 @@ def _facts(session: Session) -> dict[tuple[int, int], SeasonFacts]:
             Match.home_team_id.label("tid"),
             Match.id.label("mid"),
         ).where(Match.home_team_id.is_not(None)),
-        select(
-            Match.competition_id, Match.sb_season_id, Match.away_team_id, Match.id
-        ).where(Match.away_team_id.is_not(None)),
+        select(Match.competition_id, Match.sb_season_id, Match.away_team_id, Match.id).where(
+            Match.away_team_id.is_not(None)
+        ),
     ).subquery()
 
     appearances: dict[tuple[int, int], dict[int, int]] = {}
