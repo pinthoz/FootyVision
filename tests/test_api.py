@@ -409,3 +409,30 @@ def test_team_strength_rates_the_side_that_keeps_winning(client, db_session):
     # Negative defence means conceding less than average — the sign that catches people out.
     assert rated["Strong"]["defence"] < rated["Weak"]["defence"]
     teams_router._CACHE.clear()
+
+
+def test_the_docs_page_is_themed_and_still_generated(client):
+    """Swagger's default white reads as a different product beside the dashboard.
+
+    Only the presentation is replaced: the page is still built from the OpenAPI schema, so
+    an endpoint added tomorrow appears without anyone editing a template. The header is
+    counted off the same schema, which is what this pins.
+    """
+    page = client.get("/docs")
+
+    assert page.status_code == 200
+    assert 'id="swagger-ui"' in page.text
+    assert "/static/docs.css" in page.text
+    assert "FootyVision" in page.text
+    # Every tag lands in exactly one section of the map above the reference.
+    from footyvision.api.docs import SECTIONS
+
+    spec = client.get("/openapi.json").json()
+    tagged = {t for methods in spec["paths"].values() for op in methods.values()
+              for t in op.get("tags", [])}
+    mapped = {tag for _, _, tags in SECTIONS for tag in tags}
+    assert tagged <= mapped, f"untagged in the docs map: {sorted(tagged - mapped)}"
+
+    css = client.get("/static/docs.css")
+    assert css.status_code == 200
+    assert css.headers["content-type"].startswith("text/css")
