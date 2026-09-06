@@ -2,7 +2,7 @@
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "http://localhost:8000";
 
-export type Player = { id: number; name: string; country: string | null };
+export type Player = { id: number; name: string; country: string | null; gender?: string | null };
 
 export type RadarMetric = { value: number; percentile: number };
 export type Radar = {
@@ -35,6 +35,9 @@ export type Score = {
   predicted_role: string | null;
   role_confidence: number | null;
   role_profile: Record<string, number>;
+  /** The 23-class prediction, and the model's three best guesses at it. */
+  predicted_position?: string | null;
+  position_shortlist?: string[];
 };
 
 export type RankingRow = {
@@ -44,6 +47,7 @@ export type RankingRow = {
   position_group: string;
   primary_position: string | null;
   performance_score: number;
+  gender?: string | null;
 };
 
 export type TopFeature = {
@@ -59,15 +63,27 @@ export type ModelInfoResponse = {
   n_test: number;
   features?: string[];
   top_features?: TopFeature[];
-  role_model: {
-    classes: string[];
-    test_accuracy: number;
-    n_train: number;
-    n_test: number;
-  } | null;
+  role_model: PositionModel | null;
+  exact_model?: PositionModel | null;
 };
 
-export type DistributionPoint = { player_id: number; name: string; value: number };
+export type PositionModel = {
+  classes: string[];
+  test_accuracy: number;
+  n_train: number;
+  n_test: number;
+  /** Only reported where a single-label score understates the model: 23 exact positions. */
+  top3_accuracy?: number | null;
+};
+
+export type DistributionPoint = {
+  /** Unique per player-season; `player_id` is not, for the eleven who changed league. */
+  id: string;
+  player_id: number;
+  name: string;
+  competition?: string | null;
+  value: number;
+};
 
 export type Distribution = {
   metric: string;
@@ -82,6 +98,8 @@ export type SearchRow = {
   competition: string | null;
   primary_position: string | null;
   position_group?: string;
+  gender?: string | null;
+  nationality?: string | null;
   stats: Record<string, number>;
 };
 
@@ -106,10 +124,12 @@ async function post<T>(path: string, body: unknown): Promise<Response> {
 }
 
 export const api = {
-  searchPlayers: (q: string) => {
+  searchPlayers: (q: string, gender?: "all" | "female" | "male") => {
     const term = q.trim();
-    const queryParam = term ? `search=${encodeURIComponent(term)}&` : "";
-    return get<Player[]>(`/players?${queryParam}with_stats=true&limit=200`);
+    const params = new URLSearchParams({ with_stats: "true", limit: "200" });
+    if (term) params.set("search", term);
+    if (gender && gender !== "all") params.set("gender", gender);
+    return get<Player[]>(`/players?${params.toString()}`);
   },
   radar: (id: number) => get<Radar>(`/players/${id}/radar`),
   similar: (id: number) =>
@@ -120,10 +140,12 @@ export const api = {
       `/metrics/${metric}/distribution` +
         (positionGroup ? `?position_group=${positionGroup}` : "")
     ),
-  rankings: (positionGroup?: string, topN = 20) =>
-    get<{ results: RankingRow[] }>(
-      `/rankings?top_n=${topN}` + (positionGroup ? `&position_group=${positionGroup}` : "")
-    ).then((r) => r.results),
+  rankings: (positionGroup?: string, topN = 20, gender?: "all" | "female" | "male") => {
+    const params = new URLSearchParams({ top_n: String(topN) });
+    if (positionGroup) params.set("position_group", positionGroup);
+    if (gender && gender !== "all") params.set("gender", gender);
+    return get<{ results: RankingRow[] }>(`/rankings?${params.toString()}`).then((r) => r.results);
+  },
   modelInfo: () => get<ModelInfoResponse>("/talent/model-info"),
   nlSearch: (query: string) =>
     post("/search", { query }).then(async (r) => ({
@@ -141,6 +163,8 @@ export const api = {
       data: r.ok ? ((await r.json()) as AssistantResult) : null,
     })),
   coverage: () => get<Coverage>("/coverage"),
+  assistantEvaluation: () => get<RagasEvaluation>("/eval/assistant"),
+  teamStrength: () => get<TeamStrength>("/teams/strength"),
 };
 
 export type CoverageSeason = {
@@ -273,3 +297,49 @@ export function getMetricLabel(metricKey: string): string {
   if (found) return found.label;
   return metricKey.replace(/_per90$/, "").replace(/_/g, " ");
 }
+
+export type RagasRow = {
+  question: string;
+  kind: string;
+  faithfulness: number;
+  context_precision: number;
+  answer_relevancy: number;
+};
+
+export type RagasKind = {
+  count: number;
+  faithfulness: number | null;
+  /** Null where a refusal is the right answer — RAGAS scores one as irrelevant by design. */
+  answer_relevancy: number | null;
+};
+
+export type RagasEvaluation = {
+  measured_on: string;
+  answer_model: string;
+  judge_model: string;
+  questions: number;
+  metrics: Record<string, number | null>;
+  unanswerable: { count: number; faithfulness: number | null };
+  answerable_relevancy: number | null;
+  /** More than one of either means the run was finished on a second model. */
+  answer_models?: string[];
+  judges?: string[];
+  by_kind?: Record<string, RagasKind>;
+  rows: RagasRow[];
+};
+
+export type TeamRating = {
+  team_id: number;
+  name: string;
+  competition: string | null;
+  /** Log-scale Poisson coefficients: 0 is average, and a *negative* defence is good. */
+  attack: number;
+  defence: number;
+  matches: number;
+};
+
+export type TeamStrength = {
+  home_advantage: number;
+  matches: number;
+  teams: TeamRating[];
+};

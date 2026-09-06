@@ -11,7 +11,9 @@ import Markdown from "./components/Markdown";
 import Logo from "./components/Logo";
 import SoccerBall from "./components/SoccerBall";
 import JugglingBoot from "./components/JugglingBoot";
+import AssistantEvaluation from "./components/AssistantEvaluation";
 import DataCoverage from "./components/DataCoverage";
+import TeamStrength from "./components/TeamStrength";
 import MetricDistribution from "./components/MetricDistribution";
 import MetricScatter from "./components/MetricScatter";
 import Bars, { Bar } from "./components/Bars";
@@ -33,12 +35,12 @@ const INITIAL_DEFAULT_ROSTER: Player[] = FEATURED_PLAYERS.map((fp) => ({
   id: fp.id,
   name: fp.name,
   country: null,
+  gender: fp.gender,
 }));
 
 const PRESET_MATCHUPS = [
   { name: "Messi vs Ronaldo", pA: { id: 5503, name: "Lionel Messi" }, pB: { id: 5207, name: "Cristiano Ronaldo" } },
   { name: "Iniesta vs Griezmann", pA: { id: 5216, name: "Andrés Iniesta" }, pB: { id: 5487, name: "Antoine Griezmann" } },
-  { name: "Casemiro vs Laporte", pA: { id: 5539, name: "Casemiro" }, pB: { id: 4353, name: "Aymeric Laporte" } },
 ];
 
 export default function Home() {
@@ -55,12 +57,54 @@ export default function Home() {
   const [radarPreset, setRadarPreset] = useState<string>("curated");
   const [aiSubTab, setAiSubTab] = useState<"assistant" | "search" | "report">("assistant");
   const [searchQuery, setSearchQuery] = useState("");
+  const [genderFilter, setGenderFilter] = useState<"all" | "female" | "male">("all");
   const [isLoadingSearch, setIsLoadingSearch] = useState(false);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [pickerTarget, setPickerTarget] = useState<"A" | "B">("A");
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const starsScrollRef = useRef<HTMLDivElement>(null);
+  const isDraggingStars = useRef(false);
+  const startXStars = useRef(0);
+  const startScrollLeftStars = useRef(0);
+  const hasDraggedStars = useRef(false);
+
+  function handleStarsMouseDown(e: React.MouseEvent<HTMLDivElement>) {
+    if (!starsScrollRef.current) return;
+    isDraggingStars.current = true;
+    hasDraggedStars.current = false;
+    startXStars.current = e.pageX - starsScrollRef.current.offsetLeft;
+    startScrollLeftStars.current = starsScrollRef.current.scrollLeft;
+    starsScrollRef.current.classList.add("is-dragging");
+  }
+
+  function handleStarsMouseMove(e: React.MouseEvent<HTMLDivElement>) {
+    if (!isDraggingStars.current || !starsScrollRef.current) return;
+    const x = e.pageX - starsScrollRef.current.offsetLeft;
+    const walk = (x - startXStars.current) * 1.3;
+    if (Math.abs(walk) > 4) {
+      hasDraggedStars.current = true;
+    }
+    starsScrollRef.current.scrollLeft = startScrollLeftStars.current - walk;
+  }
+
+  function handleStarsMouseUp() {
+    isDraggingStars.current = false;
+    if (starsScrollRef.current) {
+      starsScrollRef.current.classList.remove("is-dragging");
+    }
+    setTimeout(() => {
+      hasDraggedStars.current = false;
+    }, 60);
+  }
+
+  function scrollStars(offset: number) {
+    if (starsScrollRef.current) {
+      starsScrollRef.current.scrollBy({ left: offset, behavior: "smooth" });
+    }
+  }
 
   // Load default roster and initial top players
   useEffect(() => {
@@ -93,7 +137,7 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function onSearch(term: string) {
+  function onSearch(term: string, gender: "all" | "female" | "male" = genderFilter) {
     setSearchQuery(term);
     if (timer.current) clearTimeout(timer.current);
     if (!term.trim()) {
@@ -104,7 +148,7 @@ export default function Home() {
     setIsLoadingSearch(true);
     timer.current = setTimeout(async () => {
       try {
-        const found = await api.searchPlayers(term.trim());
+        const found = await api.searchPlayers(term.trim(), gender);
         setResults(found);
       } catch {
         setResults([]);
@@ -112,6 +156,22 @@ export default function Home() {
         setIsLoadingSearch(false);
       }
     }, 150);
+  }
+
+  function handleGenderFilterChange(newGender: "all" | "female" | "male") {
+    setGenderFilter(newGender);
+    if (searchQuery.trim()) {
+      onSearch(searchQuery, newGender);
+    } else {
+      setIsLoadingSearch(true);
+      api
+        .searchPlayers("", newGender)
+        .then((players) => {
+          setDefaultRoster(players);
+        })
+        .catch(() => {})
+        .finally(() => setIsLoadingSearch(false));
+    }
   }
 
   async function pickPlayer(p: Player, target?: "A" | "B") {
@@ -204,6 +264,7 @@ export default function Home() {
       <PlayerPickerModal
         isOpen={isPickerOpen}
         targetSlot={pickerTarget}
+        initialGender={genderFilter}
         onClose={() => setIsPickerOpen(false)}
         onSelectPlayer={(p, slot) => pickPlayer(p, slot)}
       />
@@ -212,13 +273,12 @@ export default function Home() {
       <header className="header">
         <div className="header-brand">
           <div className="logo-badge">
-            <Logo />
+            <Logo size={22} />
             <span className="logo-text">FootyVision</span>
           </div>
-          
         </div>
 
-        {/* Featured Presets */}
+        {/* Featured Presets (Duels) - Afastados dos outros, na mesma linha */}
         <div className="header-presets">
           <span className="presets-label">Preset Duels:</span>
           {PRESET_MATCHUPS.map((pm, idx) => (
@@ -235,8 +295,11 @@ export default function Home() {
           ))}
         </div>
 
+        {/* Dataset, Assistant, Target Slot, Actions - Encostados à direita, tudo! */}
         <div className="header-meta">
           <DataCoverage />
+          <AssistantEvaluation />
+          <TeamStrength />
 
           <div className="active-target-pill">
             <span className="muted-text">Target Slot:</span>
@@ -312,13 +375,43 @@ export default function Home() {
             </button>
           </div>
 
+          {/* Gender Filter Buttons: All, Female, Male */}
+          <div className="search-gender-filter-bar">
+            <button
+              type="button"
+              className={`search-gender-btn ${genderFilter === "all" ? "active" : ""}`}
+              onClick={() => handleGenderFilterChange("all")}
+            >
+              All
+            </button>
+            <button
+              type="button"
+              className={`search-gender-btn female ${genderFilter === "female" ? "active" : ""}`}
+              onClick={() => handleGenderFilterChange("female")}
+            >
+              ♀ Female
+            </button>
+            <button
+              type="button"
+              className={`search-gender-btn male ${genderFilter === "male" ? "active" : ""}`}
+              onClick={() => handleGenderFilterChange("male")}
+            >
+              ♂ Male
+            </button>
+          </div>
+
           <div className="search-input-wrapper">
-            
             <input
               ref={searchInputRef}
               type="text"
               value={searchQuery}
-              placeholder="Search by name (e.g. Messi, Ronaldo, Iniesta)..."
+              placeholder={
+                genderFilter === "female"
+                  ? "Search female players (e.g. Putellas, Bonmatí, Kerr)..."
+                  : genderFilter === "male"
+                  ? "Search male players (e.g. Messi, Ronaldo, Iniesta)..."
+                  : "Search by name (e.g. Messi, Putellas, Ronaldo)..."
+              }
               onChange={(e) => onSearch(e.target.value)}
             />
             {searchQuery && (
@@ -335,21 +428,60 @@ export default function Home() {
             )}
           </div>
 
-          {/* Quick Stars */}
+          {/* Quick Stars with horizontal drag and nav arrows */}
           <div className="sidebar-quick-stars">
             <span className="stars-label">Stars:</span>
-            <div className="quick-stars-scroll">
-              {FEATURED_PLAYERS.map((fp) => (
+            <button
+              type="button"
+              className="stars-nav-btn left"
+              title="Scroll stars left"
+              aria-label="Scroll stars left"
+              onClick={() => scrollStars(-140)}
+            >
+              ‹
+            </button>
+            <div
+              className="quick-stars-scroll"
+              ref={starsScrollRef}
+              onMouseDown={handleStarsMouseDown}
+              onMouseMove={handleStarsMouseMove}
+              onMouseUp={handleStarsMouseUp}
+              onMouseLeave={handleStarsMouseUp}
+              onWheel={(e) => {
+                if (starsScrollRef.current && e.deltaY) {
+                  starsScrollRef.current.scrollLeft += e.deltaY;
+                }
+              }}
+            >
+              {FEATURED_PLAYERS.filter((fp) => genderFilter === "all" || fp.gender === genderFilter).map((fp) => (
                 <button
                   key={fp.id}
                   className="quick-star-chip"
-                  onClick={() => pickPlayer({ id: fp.id, name: fp.name, country: null }, activeSlot)}
+                  onClick={(e) => {
+                    if (hasDraggedStars.current) {
+                      e.preventDefault();
+                      return;
+                    }
+                    pickPlayer({ id: fp.id, name: fp.name, country: null, gender: fp.gender }, activeSlot);
+                  }}
                 >
                   <PlayerAvatar name={fp.name} size="sm" themeColor="var(--accent)" />
                   <span>{fp.name.split(" ").slice(-1)[0]}</span>
+                  {genderFilter === "all" && (
+                    <span className={`star-gender-dot ${fp.gender}`}>{fp.gender === "female" ? "♀" : "♂"}</span>
+                  )}
                 </button>
               ))}
             </div>
+            <button
+              type="button"
+              className="stars-nav-btn right"
+              title="Scroll stars right"
+              aria-label="Scroll stars right"
+              onClick={() => scrollStars(140)}
+            >
+              ›
+            </button>
           </div>
 
           {/* Inline Scrollable Roster with Photos */}
@@ -374,7 +506,14 @@ export default function Home() {
                     <div className="result-left">
                       <PlayerAvatar name={p.name} size="sm" themeColor="var(--a)" />
                       <div className="result-info">
-                        <span className="result-name">{p.name}</span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                          <span className="result-name">{p.name}</span>
+                          {genderFilter === "all" && p.gender && (
+                            <span className={`player-gender-tag ${p.gender}`} style={{ flexShrink: 0 }}>
+                              {p.gender === "female" ? "♀ Female" : "♂ Male"}
+                            </span>
+                          )}
+                        </div>
                         {p.country && <span className="result-meta">{p.country}</span>}
                       </div>
                     </div>
@@ -1001,18 +1140,19 @@ function Rankings({
   onPick: (p: Player, target?: "A" | "B") => void;
 }) {
   const [group, setGroup] = useState<string>("");
+  const [gender, setGender] = useState<"all" | "female" | "male">("all");
   const [rows, setRows] = useState<RankingRow[]>([]);
 
   useEffect(() => {
     let stale = false;
     api
-      .rankings(group || undefined, 10)
+      .rankings(group || undefined, 10, gender)
       .then((r) => !stale && setRows(r))
       .catch(() => !stale && setRows([]));
     return () => {
       stale = true;
     };
-  }, [group]);
+  }, [group, gender]);
 
   const bars: Bar[] = rows.map((r, i) => {
     const isA = r.player_id === selectedIdA;
@@ -1030,15 +1170,32 @@ function Rankings({
 
   return (
     <div className="leaderboard-inner">
-      <div className="panel-header">
+      <div className="panel-header" style={{ alignItems: "center", gap: 12, flexWrap: "wrap", justifyContent: "space-between" }}>
         <div>
           <label>Performance Leaderboard</label>
           <div className="leaderboard-sub">Overall top rated by peers</div>
         </div>
+
+        {/* United Gender Bar (in the middle between title and position chips) */}
+        <div className="leaderboard-gender-bar">
+          {(["all", "female", "male"] as const).map((g) => (
+            <button
+              key={g}
+              type="button"
+              className={`leaderboard-gender-btn ${g} ${gender === g ? "active" : ""}`}
+              onClick={() => setGender(g)}
+            >
+              {g === "all" ? "All" : g === "female" ? "Female" : "Male"}
+            </button>
+          ))}
+        </div>
+
+        {/* Position Group Filter Chips (on the right) */}
         <div className="pos-chips">
           {["", "GK", "DEF", "MID", "FWD"].map((g) => (
             <button
               key={g || "all"}
+              type="button"
               className={`chip ${group === g ? "active" : ""}`}
               onClick={() => setGroup(g)}
             >
@@ -1059,19 +1216,19 @@ function Rankings({
           color="var(--accent)"
           onPick={(i) =>
             onPick(
-              { id: rows[i].player_id, name: rows[i].name, country: null },
+              { id: rows[i].player_id, name: rows[i].name, country: null, gender: rows[i].gender },
               activeSlot
             )
           }
           onPickA={(i) =>
             onPick(
-              { id: rows[i].player_id, name: rows[i].name, country: null },
+              { id: rows[i].player_id, name: rows[i].name, country: null, gender: rows[i].gender },
               "A"
             )
           }
           onPickB={(i) =>
             onPick(
-              { id: rows[i].player_id, name: rows[i].name, country: null },
+              { id: rows[i].player_id, name: rows[i].name, country: null, gender: rows[i].gender },
               "B"
             )
           }
@@ -1245,12 +1402,17 @@ function NLSearch({
     if (status === 503) return setInfo("The local model is not running. Start LM Studio and try again.");
     if (status === 422) return setInfo("Could not interpret into structured filters.");
     if (!data) return setInfo(`Error code ${status}.`);
-    const conds = (data.interpreted.conditions ?? [])
-      .map(
+    const conds = [
+      data.interpreted.gender ? `Gender: ${data.interpreted.gender}` : null,
+      data.interpreted.position_group ? `Pos: ${data.interpreted.position_group}` : null,
+      data.interpreted.competition ? `Comp: ${data.interpreted.competition}` : null,
+      ...(data.interpreted.conditions ?? []).map(
         (c: { field: string; op: string; value: number }) =>
           `${c.field} ${c.op} ${c.value}`
-      )
-      .join(", ");
+      ),
+    ]
+      .filter(Boolean)
+      .join(" · ");
     setInfo(`${data.count} matches found · ${conds || "all filters passed"}`);
     setRows(data.results);
   }
@@ -1260,7 +1422,7 @@ function NLSearch({
       <div className="ai-input-group">
         <input
           type="text"
-          placeholder="e.g. La Liga forwards with xG per 90 above 0.4 and tackles over 1.5"
+          placeholder="e.g. Female player that has more than 0.8 pct shots, or La Liga wingers with xG over 0.4"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && run()}
@@ -1303,6 +1465,11 @@ function NLSearch({
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <PlayerAvatar name={r.name} size="sm" themeColor="var(--accent)" />
                 <span className="nl-player-name">{r.name}</span>
+                {r.gender && (
+                  <span className={`player-gender-tag ${r.gender}`}>
+                    {r.gender === "female" ? "♀ Female" : "♂ Male"}
+                  </span>
+                )}
               </div>
               <span className="pos-badge">{r.primary_position ?? r.position_group}</span>
             </div>
@@ -1311,7 +1478,7 @@ function NLSearch({
               <button
                 className="micro-btn a-btn"
                 onClick={() =>
-                  onPick({ id: r.player_id, name: r.name, country: null }, "A")
+                  onPick({ id: r.player_id, name: r.name, country: null, gender: r.gender }, "A")
                 }
               >
                 Set to Slot A
@@ -1319,7 +1486,7 @@ function NLSearch({
               <button
                 className="micro-btn b-btn"
                 onClick={() =>
-                  onPick({ id: r.player_id, name: r.name, country: null }, "B")
+                  onPick({ id: r.player_id, name: r.name, country: null, gender: r.gender }, "B")
                 }
               >
                 Set to Slot B

@@ -4,20 +4,36 @@ import { useEffect, useRef, useState } from "react";
 import { Player, api } from "../lib/api";
 import PlayerAvatar from "./PlayerAvatar";
 
-export const FEATURED_PLAYERS: { id: number; name: string; position: string; desc: string }[] = [
-  { id: 5503, name: "Lionel Messi", position: "FWD", desc: "Elite Playmaking & Finishing" },
-  { id: 5207, name: "Cristiano Ronaldo", position: "FWD", desc: "Supreme Goalscorer & Aerial Threat" },
-  { id: 5487, name: "Antoine Griezmann", position: "FWD", desc: "Dynamic Second Striker & Workrate" },
-  { id: 5216, name: "Andrés Iniesta", position: "MID", desc: "Magical Progression & Vision" },
-  { id: 5539, name: "Casemiro", position: "MID", desc: "Ball Winning & Defensive Anchor" },
-  { id: 6394, name: "Aritz Aduriz", position: "FWD", desc: "Classic Box Striker & Heading" },
-  { id: 4353, name: "Aymeric Laporte", position: "DEF", desc: "Ball-Playing Center Back" },
-  { id: 4324, name: "Dani Alves", position: "DEF", desc: "Attacking Full-Back & Crossing" },
+export type FeaturedPlayer = {
+  id: number;
+  name: string;
+  position: string;
+  desc: string;
+  gender: "male" | "female";
+};
+
+export const FEATURED_PLAYERS: FeaturedPlayer[] = [
+  // Male Stars
+  { id: 5503, name: "Lionel Messi", position: "FWD", desc: "Elite Playmaking & Finishing", gender: "male" },
+  { id: 5207, name: "Cristiano Ronaldo", position: "FWD", desc: "Supreme Goalscorer & Aerial Threat", gender: "male" },
+  { id: 5487, name: "Antoine Griezmann", position: "FWD", desc: "Dynamic Second Striker & Workrate", gender: "male" },
+  { id: 5216, name: "Andrés Iniesta", position: "MID", desc: "Magical Progression & Vision", gender: "male" },
+  { id: 5539, name: "Casemiro", position: "MID", desc: "Ball Winning & Defensive Anchor", gender: "male" },
+  { id: 6394, name: "Aritz Aduriz", position: "FWD", desc: "Classic Box Striker & Heading", gender: "male" },
+  { id: 4353, name: "Aymeric Laporte", position: "DEF", desc: "Ball-Playing Center Back", gender: "male" },
+  { id: 4324, name: "Dani Alves", position: "DEF", desc: "Attacking Full-Back & Crossing", gender: "male" },
+  // Female Stars
+  { id: 10143, name: "Alexia Putellas", position: "FWD", desc: "Ballon d'Or Winner & Playmaker", gender: "female" },
+  { id: 15284, name: "Aitana Bonmatí", position: "MID", desc: "Supreme Vision & Ball Progression", gender: "female" },
+  { id: 10386, name: "Caroline Hansen", position: "FWD", desc: "Elite 1v1 Dribbling & Creator", gender: "female" },
+  { id: 4961, name: "Sam Kerr", position: "FWD", desc: "Lethal Finisher & Movement", gender: "female" },
+  { id: 15619, name: "Beth Mead", position: "FWD", desc: "Dynamic Winger & Delivery", gender: "female" },
 ];
 
 type PlayerPickerModalProps = {
   isOpen: boolean;
   targetSlot: "A" | "B";
+  initialGender?: "all" | "female" | "male";
   onClose: () => void;
   onSelectPlayer: (p: Player, slot: "A" | "B") => void;
 };
@@ -25,19 +41,27 @@ type PlayerPickerModalProps = {
 export default function PlayerPickerModal({
   isOpen,
   targetSlot,
+  initialGender = "all",
   onClose,
   onSelectPlayer,
 }: PlayerPickerModalProps) {
   const [query, setQuery] = useState("");
+  const [genderFilter, setGenderFilter] = useState<"all" | "female" | "male">(initialGender);
   const [roster, setRoster] = useState<Player[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isOpen) {
+      setGenderFilter(initialGender);
+    }
+  }, [isOpen, initialGender]);
+
+  useEffect(() => {
+    if (isOpen) {
       setIsLoading(true);
       api
-        .searchPlayers(query.trim())
+        .searchPlayers(query.trim(), genderFilter)
         .then((data) => {
           setRoster(data);
           setIsLoading(false);
@@ -48,12 +72,15 @@ export default function PlayerPickerModal({
         });
       setTimeout(() => inputRef.current?.focus(), 80);
     }
-  }, [isOpen, query]);
+  }, [isOpen, query, genderFilter]);
 
   if (!isOpen) return null;
 
   const isA = targetSlot === "A";
   const themeColor = isA ? "var(--a)" : "var(--b)";
+  const displayedStars = FEATURED_PLAYERS.filter(
+    (fp) => genderFilter === "all" || fp.gender === genderFilter
+  );
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -68,14 +95,47 @@ export default function PlayerPickerModal({
           <button className="picker-close-btn" onClick={onClose}>✕</button>
         </div>
 
+        {/* Gender Filter Segmented Control */}
+        <div className="modal-filter-row">
+          <label className="filter-label">Filter Gender:</label>
+          <div className="gender-segmented-control">
+            <button
+              type="button"
+              className={`gender-segment-btn ${genderFilter === "all" ? "active" : ""}`}
+              onClick={() => setGenderFilter("all")}
+            >
+              All Players
+            </button>
+            <button
+              type="button"
+              className={`gender-segment-btn female ${genderFilter === "female" ? "active" : ""}`}
+              onClick={() => setGenderFilter("female")}
+            >
+              ♀ Female
+            </button>
+            <button
+              type="button"
+              className={`gender-segment-btn male ${genderFilter === "male" ? "active" : ""}`}
+              onClick={() => setGenderFilter("male")}
+            >
+              ♂ Male
+            </button>
+          </div>
+        </div>
+
         {/* Search Input */}
         <div className="picker-search-bar">
-          
           <input
             ref={inputRef}
             type="text"
             value={query}
-            placeholder="Type player name (e.g. Messi, Ronaldo, Griezmann)..."
+            placeholder={
+              genderFilter === "female"
+                ? "Type female player name (e.g. Putellas, Bonmatí, Kerr)..."
+                : genderFilter === "male"
+                ? "Type male player name (e.g. Messi, Ronaldo, Iniesta)..."
+                : "Type player name (e.g. Messi, Putellas, Ronaldo)..."
+            }
             onChange={(e) => setQuery(e.target.value)}
           />
           {query && (
@@ -85,20 +145,25 @@ export default function PlayerPickerModal({
 
         {/* Featured Quick Stars */}
         <div className="featured-stars-section">
-          <span className="featured-stars-title">Featured Stars:</span>
+          <span className="featured-stars-title">
+            Featured Stars {genderFilter !== "all" ? `(${genderFilter})` : ""}:
+          </span>
           <div className="featured-chips-grid">
-            {FEATURED_PLAYERS.map((fp) => (
+            {displayedStars.map((fp) => (
               <button
                 key={fp.id}
                 className="featured-chip"
                 onClick={() => {
-                  onSelectPlayer({ id: fp.id, name: fp.name, country: null }, targetSlot);
+                  onSelectPlayer({ id: fp.id, name: fp.name, country: null, gender: fp.gender }, targetSlot);
                   onClose();
                 }}
               >
                 <PlayerAvatar name={fp.name} size="sm" themeColor={themeColor} />
                 <span className="featured-chip-pos">{fp.position}</span>
                 <span className="featured-chip-name">{fp.name}</span>
+                <span className={`star-gender-dot ${fp.gender}`}>
+                  {fp.gender === "female" ? "♀" : "♂"}
+                </span>
               </button>
             ))}
           </div>
@@ -107,15 +172,18 @@ export default function PlayerPickerModal({
         {/* Available Roster List */}
         <div className="picker-roster-section">
           <div className="roster-header">
-            <span>Available Roster {roster.length > 0 ? `(${roster.length} players)` : ""}</span>
+            <span>
+              Available Roster {roster.length > 0 ? `(${roster.length} players)` : ""}
+              {genderFilter !== "all" && <span className="roster-gender-filter-badge"> · {genderFilter}</span>}
+            </span>
             {isLoading && <span className="loading-badge">Loading…</span>}
           </div>
 
           <div className="picker-roster-list">
             {roster.length === 0 && !isLoading ? (
               <div className="empty-roster-state">
-                <p>No players found matching &ldquo;{query}&rdquo;.</p>
-                <p className="empty-sub">Try clicking one of the featured stars above or clearing the search.</p>
+                <p>No players found matching &ldquo;{query}&rdquo;{genderFilter !== "all" ? ` in ${genderFilter}` : ""}.</p>
+                <p className="empty-sub">Try clicking one of the featured stars above or clearing the search/filter.</p>
               </div>
             ) : (
               roster.map((p) => (
@@ -130,7 +198,14 @@ export default function PlayerPickerModal({
                   <div className="picker-player-left">
                     <PlayerAvatar name={p.name} size="sm" themeColor={themeColor} />
                     <div className="picker-player-info">
-                      <span className="picker-name">{p.name}</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span className="picker-name">{p.name}</span>
+                        {genderFilter === "all" && p.gender && (
+                          <span className={`player-gender-tag ${p.gender}`}>
+                            {p.gender === "female" ? "♀ Female" : "♂ Male"}
+                          </span>
+                        )}
+                      </div>
                       {p.country && <span className="picker-country">{p.country}</span>}
                     </div>
                   </div>

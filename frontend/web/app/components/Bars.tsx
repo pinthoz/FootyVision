@@ -14,6 +14,8 @@ export type Bar = {
   customColor?: string;
   /** Rank number if in a leaderboard */
   rank?: number;
+  /** Gender indicator if applicable */
+  gender?: string | null;
 };
 
 export default function Bars({

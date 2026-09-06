@@ -159,77 +159,84 @@ a:hover {
 /* Top Navigation Bar */
 .header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 12px 0;
-  margin-bottom: 16px;
+  padding: 10px 0;
+  margin-bottom: 14px;
   border-bottom: 1px solid var(--border);
-  gap: 12px;
-  flex-wrap: wrap;
+  gap: 0;
+  width: 100%;
 }
 
 .header-brand {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .logo-badge {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 5px;
 }
 .logo-icon {
-  font-size: 22px;
+  font-size: 17px;
   filter: drop-shadow(0 0 8px rgba(184, 142, 45, 0.4));
 }
 .logo-text {
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 800;
   letter-spacing: -0.03em;
   background: linear-gradient(135deg, #ffffff 40%, var(--a) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  white-space: nowrap;
 }
 
 .brand-pill {
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  padding: 2px 8px;
+  padding: 1.5px 7px;
   border-radius: 999px;
   background: rgba(184, 142, 45, 0.12);
   color: var(--a);
   border: 1px solid rgba(184, 142, 45, 0.25);
 }
 
-/* Presets bar in header */
+/* Presets bar in header - Separated from other controls, pushed to right */
 .header-presets {
   display: flex;
   align-items: center;
-  gap: 6px;
-  background: rgba(0, 0, 0, 0.3);
+  gap: 3px;
+  background: rgba(0, 0, 0, 0.35);
   border: 1px solid var(--border-subtle);
-  padding: 3px 10px;
+  padding: 1.5px 6px;
   border-radius: 999px;
+  margin-left: auto;
+  margin-right: 32px;
+  flex-shrink: 0;
 }
 .presets-label {
-  font-size: 10.5px;
+  font-size: 9px;
   font-weight: 700;
   color: var(--muted);
   text-transform: uppercase;
+  white-space: nowrap;
+  letter-spacing: 0.03em;
 }
 .preset-duel-btn {
-  font-size: 11px;
+  font-size: 9.5px;
   font-weight: 600;
-  padding: 3px 9px;
+  padding: 1.5px 5.5px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--border);
   color: var(--text-dim);
   cursor: pointer;
   transition: all 0.15s ease;
+  white-space: nowrap;
 }
 .preset-duel-btn:hover {
   background: rgba(255, 255, 255, 0.14);
@@ -237,40 +244,47 @@ a:hover {
   border-color: rgba(255, 255, 255, 0.3);
 }
 
+/* Dataset, Assistant, Target Slot, Actions - Encostados à direita, tudo! */
 .header-meta {
   display: flex;
   align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
+  gap: 5px;
+  flex-shrink: 0;
+  margin-left: 0;
 }
 
 .active-target-pill {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   background: var(--panel);
-  padding: 3px 6px;
-  border-radius: 8px;
+  padding: 1.5px 4px;
+  border-radius: 7px;
   border: 1px solid var(--border);
+  white-space: nowrap;
 }
 
 .muted-text {
-  font-size: 11px;
+  font-size: 9px;
   color: var(--muted);
-  font-weight: 500;
+  font-weight: 600;
   margin-right: 2px;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
 .target-btn {
-  font-size: 11.5px;
+  font-size: 9.5px;
   font-weight: 600;
-  padding: 3px 8px;
-  border-radius: 5px;
+  padding: 1.5px 5px;
+  border-radius: 4px;
   border: 1px solid transparent;
   background: transparent;
   color: var(--muted);
   cursor: pointer;
   transition: all 0.15s ease;
+  white-space: nowrap;
 }
 .target-btn:hover {
   color: var(--text);
@@ -291,7 +305,14 @@ a:hover {
 
 .header-actions {
   display: flex;
-  gap: 6px;
+  gap: 3px;
+}
+.header-actions .action-btn {
+  font-size: 9.5px;
+  font-weight: 600;
+  padding: 1.5px 5.5px;
+  border-radius: 5px;
+  white-space: nowrap;
 }
 
 /* ============================================================================= */
@@ -395,21 +416,26 @@ a:hover {
 
 .top-command-center {
   display: grid;
-  grid-template-columns: 1fr 1.15fr 1fr;
+  grid-template-columns: minmax(220px, 0.7fr) minmax(0, 2fr) minmax(220px, 0.7fr);
   align-items: stretch;
   gap: 16px;
   margin-bottom: 22px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .command-col-slot {
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  width: 100%;
 }
 
 .command-col-search {
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  min-width: 0;
+  width: 100%;
 }
 
 .search-hub-panel {
@@ -418,6 +444,12 @@ a:hover {
   padding: 14px 16px;
   border-radius: var(--radius-lg);
   height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  width: 100%;
+  overflow: hidden;
 }
 
 .hub-roster-container {
@@ -426,13 +458,18 @@ a:hover {
   border: 1px solid var(--border-subtle);
   border-radius: 8px;
   overflow: hidden;
-  flex: 1;
+  height: 205px;
+  min-height: 205px;
+  max-height: 205px;
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
 }
 
 .hub-roster-scroll {
-  max-height: 145px;
+  height: 170px;
+  min-height: 170px;
+  max-height: 170px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -1012,8 +1049,15 @@ label {
   align-items: center;
   gap: 5px;
   margin-top: 6px;
-  overflow-x: auto;
-  padding-bottom: 2px;
+  height: 34px;
+  min-height: 34px;
+  max-height: 34px;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  position: relative;
 }
 .stars-label {
   font-size: 10px;
@@ -1021,10 +1065,53 @@ label {
   color: var(--muted);
   text-transform: uppercase;
   white-space: nowrap;
+  flex-shrink: 0;
+  user-select: none;
+}
+.stars-nav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 22px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+  user-select: none;
+  padding: 0;
+}
+.stars-nav-btn:hover {
+  background: rgba(184, 142, 45, 0.22);
+  color: var(--a);
+  border-color: var(--a);
 }
 .quick-stars-scroll {
   display: flex;
+  align-items: center;
   gap: 4px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  flex: 1;
+  min-width: 0;
+  padding: 2px 0;
+  cursor: grab;
+  user-select: none;
+  scroll-behavior: smooth;
+}
+.quick-stars-scroll:active,
+.quick-stars-scroll.is-dragging {
+  cursor: grabbing;
+}
+.quick-stars-scroll::-webkit-scrollbar {
+  display: none;
 }
 .quick-star-chip {
   display: flex;
@@ -1038,7 +1125,9 @@ label {
   border: 1px solid var(--border);
   color: var(--text-dim);
   white-space: nowrap;
+  flex-shrink: 0;
   cursor: pointer;
+  user-select: none;
   transition: all 0.15s ease;
 }
 .quick-star-chip:hover {
@@ -1095,15 +1184,22 @@ label {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+  flex: 1;
 }
 .result-info {
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  flex: 1;
 }
 .result-name {
   font-weight: 600;
   font-size: 12px;
   color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .result-meta {
   font-size: 10px;
@@ -2511,6 +2607,18 @@ table td,
   color: var(--text-dim);
 }
 
+/* The exact-position call, one step quieter than the group above it: a 23-class model is
+   right 46% of the time, so it earns a place on the card but not the same weight as a
+   figure that is right 91% of the time. */
+.slot-score-exact {
+  display: block;
+  margin-top: 2px;
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  color: var(--text-dim);
+  opacity: 0.85;
+}
+
 /* --- slot card actions --------------------------------------------------- */
 
 /* Secondary controls. They sit beside the player's name, so they stay quiet until
@@ -2623,12 +2731,16 @@ table td,
 
 /* --- scatter: pickers beside the plot ------------------------------------ */
 
+/* Pickers and plot are one object and are centred as one. Giving each a half of the panel
+   pushed them to opposite edges with a void between, which is the failure mode of
+   centring two things separately instead of centring the pair. */
 .scatter-layout {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 20px;
-  align-items: start;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 26px;
   margin-top: 10px;
+  flex-wrap: wrap;
 }
 
 /* One column per axis, so which chip drives which direction needs no explaining. */
@@ -2667,16 +2779,17 @@ table td,
 .coverage-trigger {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 999px;
-  padding: 4px 12px;
-  font-size: 11.5px;
+  padding: 2.5px 8px;
+  font-size: 11px;
   font-weight: 500;
   color: var(--text);
   cursor: pointer;
   transition: all 0.2s ease;
+  white-space: nowrap;
 }
 
 .coverage-trigger:hover {
@@ -2687,16 +2800,19 @@ table td,
 
 .coverage-trigger-label {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 9.5px;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
   font-weight: 700;
+  white-space: nowrap;
 }
 
 .coverage-trigger-value {
   color: var(--accent);
+  font-size: 10.5px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .coverage-trigger-value.dim {
@@ -3599,4 +3715,314 @@ table td,
   .info-badge {
     transition: none;
   }
+}
+
+/* --- Gender Filters & Indicators -------------------------------------- */
+.search-gender-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 3px;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid var(--border);
+  margin-bottom: 8px;
+  height: 32px;
+  min-height: 32px;
+  max-height: 32px;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+.search-gender-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.search-gender-btn:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.search-gender-btn.active {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.search-gender-btn.female.active {
+  background: rgba(244, 114, 182, 0.2);
+  color: #f472b6;
+  border: 1px solid rgba(244, 114, 182, 0.35);
+}
+
+.search-gender-btn.male.active {
+  background: rgba(56, 189, 248, 0.2);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+}
+
+/* Leaderboard United Gender Bar */
+.leaderboard-gender-bar {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 6px);
+  padding: 2px;
+  box-sizing: border-box;
+  gap: 2px;
+}
+
+.leaderboard-gender-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 2.5px 9px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  line-height: 1.3;
+  user-select: none;
+}
+
+.leaderboard-gender-btn:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.leaderboard-gender-btn.active {
+  background: var(--panel-2);
+  color: var(--text);
+  border-color: rgba(184, 142, 45, 0.4);
+  box-shadow: 0 0 8px rgba(184, 142, 45, 0.15);
+}
+
+.leaderboard-gender-btn.female.active {
+  background: rgba(244, 114, 182, 0.18);
+  color: #f472b6;
+  border-color: rgba(244, 114, 182, 0.35);
+  box-shadow: 0 0 8px rgba(244, 114, 182, 0.2);
+}
+
+.leaderboard-gender-btn.male.active {
+  background: rgba(56, 189, 248, 0.18);
+  color: #38bdf8;
+  border-color: rgba(56, 189, 248, 0.35);
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.2);
+}
+
+/* Modal Gender Controls */
+.modal-filter-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 20px 0;
+  gap: 12px;
+}
+
+.modal-filter-row .filter-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.gender-segmented-control {
+  display: flex;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 6px);
+  padding: 3px;
+  gap: 3px;
+}
+
+.gender-segment-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.gender-segment-btn:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.gender-segment-btn.active {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text);
+}
+
+.gender-segment-btn.female.active {
+  background: rgba(244, 114, 182, 0.2);
+  color: #f472b6;
+}
+
+.gender-segment-btn.male.active {
+  background: rgba(56, 189, 248, 0.2);
+  color: #38bdf8;
+}
+
+/* Gender tags & badges */
+.player-gender-tag {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 1px 5px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  line-height: 1.3;
+}
+
+.player-gender-tag.female {
+  background: rgba(244, 114, 182, 0.15);
+  color: #f472b6;
+  border: 1px solid rgba(244, 114, 182, 0.28);
+}
+
+.player-gender-tag.male {
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.28);
+}
+
+.star-gender-dot {
+  font-size: 10px;
+  margin-left: 2px;
+  font-weight: 700;
+}
+
+.star-gender-dot.female {
+  color: #f472b6;
+}
+
+.star-gender-dot.male {
+  color: #38bdf8;
+}
+
+.roster-gender-filter-badge {
+  font-size: 10.5px;
+  color: var(--muted);
+  text-transform: capitalize;
+  font-weight: 500;
+}
+
+
+/* The competition filter above the strength quadrant. Wraps, because ten league names do
+   not fit on one line at modal width. */
+.strength-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+/* A quadrant needs room to be read as one: at the 450px the other charts use, a hundred
+   and sixty clubs collapse into a single blob. */
+.strength-chart {
+  max-width: 100%;
+  margin-bottom: 4px;
+}
+
+
+/* The swarm and the scatter hold six hundred points, where .chart-frame's 450px is sized
+   for a card: at that width the field collapses into a band. Wider, but still a stated
+   width rather than 100% — the auto inline margin inherited from .chart-frame is what
+   centres these, and a full-width box has nothing left to centre within. */
+.swarm-frame {
+  max-width: 600px;
+  margin-top: 14px;
+}
+.scatter-frame {
+  flex: 0 1 600px;
+  width: min(600px, 100%);
+  margin: 0;
+}
+
+/* The key and the note belong to the plot, so they share its width and its centre line
+   instead of running the whole panel. */
+.chart-centred {
+  max-width: var(--chart-width, 600px);
+  margin-inline: auto;
+}
+/* The scatter is the narrower of the two plots, and its note has to share its edges
+   rather than the swarm's. */
+.chart-centred.narrow {
+  --chart-width: 760px;
+}
+.chart-centred.chart-key {
+  justify-content: center;
+}
+.chart-centred.chartnote {
+  text-align: center;
+}
+/* `.filters` carries no styling of its own anywhere — the chips were flowing as
+   inline-block and the gaps between them were HTML whitespace, so `justify-content` had
+   nothing to act on. Made a flex row here, scoped to the centred variant so the other
+   user of `.filters` keeps the layout it has. */
+.chart-centred.filters {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+.axis-picker .chip:disabled {
+  opacity: 0.32;
+  cursor: not-allowed;
+}
+
+/* The value and percentile beside a name in the chart key: a swarm shows shape, and this
+   is the magnitude it cannot. */
+.chart-key-stat {
+  margin-left: 6px;
+  font-variant-numeric: tabular-nums;
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+
+/* The evaluation panel: a heading between its two tables, and the per-question list folded
+   away behind a summary because fifty-eight rows bury the breakdown that matters. */
+.eval-subhead {
+  margin: 18px 0 8px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.eval-questions {
+  margin-top: 16px;
+}
+.eval-questions > summary {
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--muted);
+  padding: 4px 0;
+}
+.eval-questions > summary:hover {
+  color: var(--text);
 }

@@ -40,6 +40,102 @@ type PlayerCardProps = {
 // asserting it — the metrics that decide position, and where this player sits on each.
 const STYLE_HINT = "Why this style? See the metrics that decided it.";
 
+/** The three classifiers, and why 46% is the interesting number rather than a poor one.
+
+    Accuracy without a class count says nothing. The same model reads as excellent over
+    four position groups and as broken over twenty-three exact positions, and it is the
+    same model — so each row carries how many classes it chose between and what guessing
+    would have scored. The exact classifier is the one worth showing: distinguishing a
+    left centre-back from a right centre-back is a genuinely hard problem, and the top-3
+    figure is how a scout would actually use it. */
+function PositionLadder({
+  modelInfo,
+  score,
+  themeColor,
+}: {
+  modelInfo: ModelInfoResponse;
+  score: Score;
+  themeColor: string;
+}) {
+  const exact = modelInfo.exact_model;
+  const shortlist = score.position_shortlist ?? [];
+
+  const rungs = [
+    { label: "Position group", model: { classes: modelInfo.classes, test_accuracy: modelInfo.test_accuracy } },
+    modelInfo.role_model && { label: "Side-agnostic role", model: modelInfo.role_model },
+    exact && { label: "Exact position", model: exact },
+  ].filter(Boolean) as { label: string; model: { classes: string[]; test_accuracy: number } }[];
+
+  return (
+    <>
+      {shortlist.length > 0 && (
+        <p className="why-note">
+          On the metrics alone the exact-position model calls him a{" "}
+          <strong style={{ color: themeColor }}>{shortlist[0]}</strong>
+          {shortlist.length > 1 && (
+            <>
+              , with{" "}
+              {shortlist.slice(1).map((name, i) => (
+                <span key={name}>
+                  {i > 0 && " and "}
+                  <strong>{name}</strong>
+                </span>
+              ))}{" "}
+              next
+            </>
+          )}
+          .
+        </p>
+      )}
+
+      <ul className="why-list why-list-head">
+        <li>
+          <span>Classifier</span>
+          <span>Accuracy</span>
+          <span className="why-pct">Chance</span>
+        </li>
+      </ul>
+      <ul className="why-list">
+        {rungs.map((r) => {
+          const n = r.model.classes.length;
+          const chance = 1 / n;
+          return (
+            <li key={r.label}>
+              <span className="why-metric">
+                {r.label}
+                <span className="coverage-country"> {n} classes</span>
+              </span>
+              <span className="why-shap">
+                <span className="why-bar">
+                  <span
+                    style={{ width: `${r.model.test_accuracy * 100}%`, background: themeColor }}
+                  />
+                </span>
+                <span className="why-shap-value">
+                  {Math.round(r.model.test_accuracy * 100)}%
+                </span>
+              </span>
+              <span className="why-pct">{Math.round(chance * 100)}%</span>
+            </li>
+          );
+        })}
+      </ul>
+
+      {exact?.top3_accuracy != null && (
+        <p className="why-note">
+          The exact model picks one of <strong>{exact.classes.length}</strong> positions, where
+          guessing scores {Math.round((100 / exact.classes.length))}%. Its single best guess is
+          right {Math.round(exact.test_accuracy * 100)}% of the time and the right answer is in
+          its top three <strong>{Math.round(exact.top3_accuracy * 100)}%</strong> of the time —
+          which is how a shortlist gets used. Preferred foot is what makes this possible at all:
+          the per-90 counts carry no side, so nothing else in the data separates a left
+          centre-back from a right one.
+        </p>
+      )}
+    </>
+  );
+}
+
 /** The evidence behind "Plays like X", opened as a modal like Dataset Coverage.
 
     Same shell as that one on purpose: the dashboard already teaches that a badge with an
@@ -55,6 +151,7 @@ function StyleEvidence({
   styleText,
   radar,
   modelInfo,
+  score,
   themeColor,
   onClose,
 }: {
@@ -62,6 +159,7 @@ function StyleEvidence({
   styleText: string;
   radar: RadarData;
   modelInfo: ModelInfoResponse;
+  score: Score;
   themeColor: string;
   onClose: () => void;
 }) {
@@ -95,6 +193,8 @@ function StyleEvidence({
         </div>
 
         <div className="style-modal-body">
+          <PositionLadder modelInfo={modelInfo} score={score} themeColor={themeColor} />
+
           <p className="why-note">
             The position classifier is an <strong>XGBoost</strong> model trained on the 17
             per-90 metrics. <strong>TreeSHAP</strong> — the exact attribution method for
@@ -362,6 +462,7 @@ export default function PlayerCard({
                     styleText={styleText}
                     radar={radar}
                     modelInfo={modelInfo}
+                    score={score}
                     themeColor={themeColor}
                     onClose={() => setShowWhy(false)}
                   />
@@ -369,6 +470,14 @@ export default function PlayerCard({
               </span>
             )}
           </span>
+          {/* The four-group call above is the safe one; this is the model actually worth
+              looking at — one of twenty-three exact positions from the metrics alone. Shown
+              beside the group rather than instead of it, because they disagree usefully. */}
+          {score.predicted_position && (
+            <span className="slot-score-exact">
+              Exact: <strong>{score.predicted_position}</strong>
+            </span>
+          )}
         </div>
       </div>
 
