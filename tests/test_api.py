@@ -338,6 +338,34 @@ def test_cors_allows_vercel_origins():
     assert (
         response.headers.get("access-control-allow-origin") == "https://footy-vision-tau.vercel.app"
     )
+
+
+def test_assistant_evaluation_is_served_from_the_published_snapshot(client):
+    """The scores shown in the dashboard are the ones the eval script measured.
+
+    Served from a committed file rather than recomputed: scoring costs dozens of LLM calls
+    and the result is a statement about a particular index on a particular day, not
+    something to recalculate on a page load.
+    """
+    response = client.get("/eval/assistant")
+    if response.status_code == 404:
+        # A checkout where the evaluation has never finished has nothing to publish, and
+        # the endpoint says so rather than serving zeros. That is the state right after a
+        # run is interrupted by a quota, so it has to be a legal one.
+        pytest.skip("no evaluation published yet")
+
+    body = response.json()
+    assert body["questions"] > 0
+    assert 0.0 <= body["metrics"]["faithfulness"] <= 1.0
+    assert len(body["rows"]) == body["questions"]
+    # The questions with no answer in the data are counted apart, because the assistant
+    # scoring well there means it declined rather than invented.
+    assert body["unanswerable"]["count"] >= 1
+    # And the headline relevancy excludes them, since RAGAS scores a refusal as irrelevant
+    # by design — averaging that in would reward a model that answered anyway.
+    assert body["answerable_relevancy"] >= body["metrics"]["answer_relevancy"]
+
+
 def test_team_strength_rates_the_side_that_keeps_winning(client, db_session):
     """Ratings come from the fixtures, so an empty database must not fabricate any."""
     from footyvision.db.models import Match, PlayerMatchStats, Team

@@ -8,6 +8,7 @@ from footyvision.api import docs
 from footyvision.api.routers import (
     assistant,
     coverage,
+    evaluation,
     health,
     metrics,
     players,
@@ -49,6 +50,7 @@ app.include_router(search.router)
 app.include_router(talent.router)
 app.include_router(metrics.router)
 app.include_router(assistant.router)
+app.include_router(evaluation.router)
 app.include_router(teams.router)
 
 # After the routers, because the page is built from the schema they define.

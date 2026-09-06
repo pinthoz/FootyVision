@@ -31,12 +31,20 @@ disagreeing that hard with a measurement of the same thing is reporting on itsel
 the pipeline. Faithfulness and answer relevancy held up under inspection; this one did
 not, and it should be re-run against a stronger judge before anyone believes it.
 
-Budget before you start. Google meters the free tier *per model per day*, and for
-gemini-2.5-flash that allowance is twenty requests — a single run of this script needs
-more than forty, so it will stop partway through with a 429 that looks like a per-minute
-limit and is not. Both stages resume from the cache, so a stopped run is not a lost one,
-but the practical answers are to point `--judge-model` at a model with its own untouched
-allowance, or to run everything against a local endpoint where there is no ceiling.
+Budget before you start. The bank is 241 questions, each costing two LLM calls to answer
+and three to score — 1,200 calls for the full set, which is hours of local inference and
+far past any free cloud allowance. `--sample 60` runs a seeded subset that still carries
+every category and is the same subset every time.
+
+Google meters the free tier *per model per day*, and the allowances vary wildly: 20 a day
+for gemini-2.5-flash and gemini-3.6-flash, 500 for gemini-3.1-flash-lite. A run therefore
+stops partway through with a 429 that looks like a per-minute limit and is not.
+
+Both stages resume, so a stopped run is not a lost one — but finishing it on a *different*
+model makes the panel mixed, and different judges calibrate differently. The snapshot
+records every judge that scored a row for exactly that reason. For numbers worth comparing
+between categories, grade the whole set with one judge: `--rescore` clears the previous
+scores, and a local endpoint has no ceiling to run into.
 
 Usage:
     python scripts/eval_ragas.py --generate     # run the assistant, cache the answers
@@ -52,40 +60,28 @@ from __future__ import annotations
 
 import argparse
 import json
+import random
 import sys
 import time
-from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from ragas_questions import Question, all_questions  # noqa: E402
+from ragas_questions import is_refusal as _is_refusal  # noqa: E402
 
 from footyvision.config import get_settings  # noqa: E402
 
 CACHE = Path(".eval_cache/ragas/run.json")
+# Committed, unlike the cache: this is the evidence the app shows for how the
+# assistant was evaluated, and it has to survive a clean checkout.
+SNAPSHOT = Path("src/footyvision/eval/ragas.json")
 
-
-@dataclass(frozen=True)
-class Question:
-    text: str
-    kind: str
-
-
-# Bilingual on purpose, and weighted towards what the assistant is actually asked. The
-# last two have no answer in the data: the honest reply is to say so, and a model that
-# invents one instead should lose faithfulness rather than pass unnoticed.
-QUESTIONS: tuple[Question, ...] = (
-    Question("Who are the best left-footed wingers?", "constraint"),
-    Question("Quais sao os melhores extremos canhotos?", "constraint"),
-    Question("Find me a young centre back who is good on the ball.", "constraint"),
-    Question("Quais os medios experientes com mais desarmes?", "constraint"),
-    Question("Which Brazilian forwards stand out?", "nationality"),
-    Question("Que jogadoras brasileiras se destacam?", "nationality"),
-    Question("Compare Neymar and Luis Suarez on dribbling.", "comparison"),
-    Question("Who has the highest xG per 90 among centre forwards?", "metric"),
-    Question("Quais os guarda-redes que mais recuperam bolas?", "metric"),
-    Question("Which players win the most aerial duels?", "unanswerable-metric"),
-    Question("Quao bom e o Otavio do FC Porto?", "unanswerable-player"),
-)
+# 241 questions: 58 written by hand to probe specific behaviour, the rest generated from
+# templates crossed with vocabularies read off the database. See ragas_questions.py.
+QUESTIONS: tuple[Question, ...] = all_questions()
 
 
 def _is_rate_limit(error: Exception) -> bool:
@@ -137,40 +133,71 @@ def generate(
         print(f"  all {len(questions)} answers already cached")
         return rows
 
+    # The session is closed before the walk begins. The index is read once and the loop
+    # then spends minutes asleep between questions, which is long enough for the database
+    # to hang up — a connection held open across all of that buys nothing and dies loudly.
     with SessionLocal() as session:
         store = get_store(session)
-        assistant = ScoutAssistant(store, client=LLMClient(cloud_model=model))
-        for i, question in enumerate(todo, 1):
-            try:
-                result = with_backoff(lambda q=question: assistant.answer(q.text))
-            except Exception as error:
-                print(f"\n  stopped at {question.text!r}: {error}")
-                print(f"  {len(rows)} answers kept; re-run to continue.")
-                break
-            rows.append(
-                {
-                    "question": question.text,
-                    "kind": question.kind,
-                    "answer": result["answer"],
-                    "contexts": result["contexts"],
-                    "filters": result.get("filters"),
-                    "not_considered": result.get("not_considered"),
-                }
-            )
-            save(rows, cache)
-            print(f"  [{i}/{len(todo)}] {question.text[:56]:58s} "
-                  f"{len(result['contexts'])} contexts", flush=True)
-            time.sleep(pause)
+
+    assistant = ScoutAssistant(store, client=LLMClient(cloud_model=model))
+    for i, question in enumerate(todo, 1):
+        try:
+            result = with_backoff(lambda q=question: assistant.answer(q.text))
+        except Exception as error:
+            print(f"\n  stopped at {question.text!r}: {error}")
+            print(f"  {len(rows)} answers kept; re-run to continue.")
+            break
+        rows.append(
+            {
+                "question": question.text,
+                "kind": question.kind,
+                "answer": result["answer"],
+                "contexts": result["contexts"],
+                "filters": result.get("filters"),
+                "not_considered": result.get("not_considered"),
+                # Which model wrote it. Read from settings at publish time, this reported
+                # whatever production was configured with rather than what actually
+                # answered — and the two diverge the moment a quota forces a switch.
+                "answered_by": model or get_settings().cloud_llm_model,
+            }
+        )
+        save(rows, cache)
+        print(f"  [{i}/{len(todo)}] {question.text[:56]:58s} "
+              f"{len(result['contexts'])} contexts", flush=True)
+        time.sleep(pause)
     return rows
 
 
-def _judge(model: str | None):
-    """A RAGAS LLM and embedder backed by the same cloud provider the app uses."""
+def _judge(model: str | None, base_url: str | None = None):
+    """A RAGAS LLM and embedder, cloud by default and local when a base URL is given.
+
+    A local endpoint is the only way to grade the whole set with one judge: the cloud free
+    tier runs out partway through and finishing on a second model makes the panel mixed.
+    """
     from openai import AsyncOpenAI
     from ragas.embeddings import OpenAIEmbeddings
     from ragas.llms import llm_factory
 
     settings = get_settings()
+    if base_url:
+        import instructor
+        from ragas.llms.base import InstructorLLM
+
+        # LM Studio wants a key it never checks; the OpenAI client refuses to send none.
+        client = AsyncOpenAI(base_url=base_url, api_key="local")
+        # Built by hand rather than through `llm_factory`, which hardcodes
+        # instructor's JSON mode and so asks for `response_format: json_object`. LM Studio
+        # accepts only `json_schema` or `text` and rejects the request outright, so the
+        # mode is the one thing that has to differ for a local judge.
+        llm = InstructorLLM(
+            client=instructor.from_openai(client, mode=instructor.Mode.JSON_SCHEMA),
+            model=model or settings.llm_model,
+            provider="openai",
+            max_tokens=4096,
+            temperature=0.0,
+        )
+        return llm, OpenAIEmbeddings(client=client, model=settings.llm_embed_model)
+
     if not settings.active_cloud_api_key:
         raise SystemExit("No cloud API key configured; RAGAS needs a judge model.")
     # Gemini speaks the OpenAI protocol at this endpoint, which is what RAGAS expects.
@@ -217,7 +244,8 @@ def contexts_for(row: dict) -> list[str]:
 
 
 def score(
-    rows: list[dict], pause: float, cache: Path, model: str | None
+    rows: list[dict], pause: float, cache: Path, model: str | None,
+    base_url: str | None = None,
 ) -> dict[str, list[float]]:
     """Score every cached answer that has not been scored yet, saving as it goes."""
     from ragas.metrics.collections import (
@@ -226,7 +254,7 @@ def score(
         Faithfulness,
     )
 
-    llm, embeddings = _judge(model)
+    llm, embeddings = _judge(model, base_url)
     metrics = {
         "faithfulness": Faithfulness(llm=llm),
         "context_precision": ContextPrecisionWithoutReference(llm=llm),
@@ -252,6 +280,10 @@ def score(
             print(f"  {len(rows) - len(pending) + i - 1} rows scored; re-run to continue.")
             break
         row["scores"] = values
+        # Which judge produced them. A run interrupted by a daily quota gets finished by a
+        # different model, and the snapshot's single `judge_model` would then describe only
+        # the last one — quietly presenting a mixed panel as one grader.
+        row["judged_by"] = model or get_settings().cloud_llm_model
         save(rows, cache)
         line = "  ".join(f"{n.split('_')[0]} {v:.2f}" for n, v in values.items())
         print(f"  [{i}/{len(pending)}] {row['kind']:20s} {line}", flush=True)
@@ -263,6 +295,92 @@ def score(
     return scored
 
 
+def _grouped(rows: list[dict]) -> dict[str, list[dict]]:
+    """Scored rows by question kind, in the order the kinds first appear."""
+    out: dict[str, list[dict]] = {}
+    for row in rows:
+        out.setdefault(row["kind"], []).append(row)
+    return out
+
+
+def write_snapshot(rows: list[dict], path: Path, judge: str, answerer: str) -> None:
+    """Publish the run as a small, dated artifact the API can serve.
+
+    The cache holds every answer and every retrieved profile, which is what debugging
+    needs and far more than a reader does. This keeps the shape of the result: the means,
+    the per-question scores, and the two caveats that a bare average hides. Written by the
+    script rather than typed by hand, so the numbers on the page are the numbers that were
+    measured.
+    """
+    scored = [r for r in rows if "scores" in r]
+    # A partial run must never replace a complete one. This snapshot is what the dashboard
+    # shows as its evidence, and a rate limit two thirds of the way through would otherwise
+    # quietly downgrade "58 questions, faithfulness 0.96" to whatever the first fourteen
+    # happened to score — with nothing on the page to say so.
+    if len(scored) < len(QUESTIONS):
+        print(
+            f"\nnot published: {len(scored)} of {len(QUESTIONS)} questions scored. "
+            f"Re-run to finish; {path} keeps the last complete run."
+        )
+        return
+
+    answerable = [r for r in scored if not _is_refusal(r["kind"])]
+    refusals = [r for r in scored if _is_refusal(r["kind"])]
+
+    def mean(values: list[float]) -> float | None:
+        return round(sum(values) / len(values), 3) if values else None
+
+    payload = {
+        "measured_on": datetime.now(UTC).date().isoformat(),
+        "answer_model": answerer,
+        # Every model that wrote an answer, read off the rows rather than assumed.
+        "answer_models": sorted({r.get("answered_by", answerer) for r in scored}),
+        "judge_model": judge,
+        # Every model that scored a row. More than one means the panel was mixed, which
+        # makes comparisons *between* categories unreliable: different judges calibrate
+        # differently, and the difference is not separable from the signal.
+        "judges": sorted({r.get("judged_by", judge) for r in scored}),
+        "questions": len(scored),
+        "metrics": {
+            name: mean([r["scores"][name] for r in scored])
+            for name in ("faithfulness", "context_precision", "answer_relevancy")
+        },
+        # The questions with no answer in the data are a separate test: there a perfect
+        # faithfulness means the assistant declined rather than invented, and answer
+        # relevancy is zero by the metric's design for exactly that reason.
+        "unanswerable": {
+            "count": len(refusals),
+            "faithfulness": mean([r["scores"]["faithfulness"] for r in refusals]),
+        },
+        "answerable_relevancy": mean([r["scores"]["answer_relevancy"] for r in answerable]),
+        # Per kind, because a single headline hides that the assistant is strong on
+        # constraints and weakest where the data itself is partial.
+        "by_kind": {
+            kind: {
+                "count": len(group),
+                "faithfulness": mean([r["scores"]["faithfulness"] for r in group]),
+                "answer_relevancy": (
+                    None
+                    if _is_refusal(kind)
+                    else mean([r["scores"]["answer_relevancy"] for r in group])
+                ),
+            }
+            for kind, group in _grouped(scored).items()
+        },
+        "rows": [
+            {
+                "question": r["question"],
+                "kind": r["kind"],
+                **{k: round(v, 3) for k, v in r["scores"].items()},
+            }
+            for r in scored
+        ],
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    print(f"\nsnapshot written to {path}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--generate", action="store_true", help="Only run the assistant.")
@@ -271,14 +389,36 @@ def main() -> None:
     parser.add_argument(
         "--pause",
         type=float,
-        default=15.0,
+        default=5.0,
         help=(
-            "Seconds between calls. The free Gemini tier allows ten requests a minute and "
-            "answering one question costs two of them — the question is embedded and then "
-            "the answer written — so anything below about twelve seconds hits a 429."
+            "Seconds between calls. The free tier meters requests per minute per model — "
+            "measured at 15 for gemini-3.1-flash-lite — and answering one question costs "
+            "two of them, the question embedded and then the answer written. Five seconds "
+            "leaves margin; four sat exactly on the limit and tripped it."
         ),
     )
     parser.add_argument("--cache", type=Path, default=CACHE)
+    parser.add_argument(
+        "--sample",
+        type=int,
+        default=None,
+        help=(
+            "Evaluate a random but seeded subset. The full bank is 241 questions, which "
+            "is 1,200 LLM calls and hours of local inference; a sample of 60 still carries "
+            "every category and is the same 60 on every run."
+        ),
+    )
+    parser.add_argument(
+        "--rescore",
+        action="store_true",
+        help="Drop existing scores so the whole set is graded by one judge.",
+    )
+    parser.add_argument(
+        "--snapshot",
+        type=Path,
+        default=SNAPSHOT,
+        help="Where to publish the dated summary the API serves.",
+    )
     # Google meters the free tier per model per day, and for some models that budget
     # is twenty requests -- less than one run of this script. Overriding the model is
     # how you get a fresh allowance without touching what production is configured to
@@ -289,6 +429,11 @@ def main() -> None:
     parser.add_argument(
         "--judge-model", default=None, help="Model that scores them."
     )
+    parser.add_argument(
+        "--judge-base-url",
+        default=None,
+        help="Point the judge at a local endpoint, e.g. http://localhost:1234/v1.",
+    )
     args = parser.parse_args()
 
     do_generate = args.generate or not args.score
@@ -296,6 +441,14 @@ def main() -> None:
 
     # Both stages resume from the cache, so a rate limit costs the questions still to do
     # rather than the ones already paid for.
+    if args.sample:
+        # Seeded, so the sample is the same set every time and two runs are comparable.
+        # Taken from the shuffled bank, which already mixes the categories together.
+        global QUESTIONS
+        QUESTIONS = tuple(
+            random.Random(7).sample(list(QUESTIONS), min(args.sample, len(QUESTIONS)))
+        )
+
     rows: list[dict] = []
     if args.cache.exists():
         rows = json.loads(args.cache.read_text(encoding="utf-8"))
@@ -310,10 +463,23 @@ def main() -> None:
     if args.limit:
         rows = rows[: args.limit]
 
+    if args.rescore:
+        for row in rows:
+            row.pop("scores", None)
+            row.pop("judged_by", None)
+        save(rows, args.cache)
+        print(f"cleared previous scores on {len(rows)} rows\n")
+
     print("Scoring with RAGAS...")
-    scores = score(rows, args.pause, args.cache, args.judge_model)
+    scores = score(rows, args.pause, args.cache, args.judge_model, args.judge_base_url)
 
     report(rows, scores)
+    write_snapshot(
+        rows,
+        args.snapshot,
+        judge=args.judge_model or get_settings().cloud_llm_model,
+        answerer=args.answer_model or get_settings().cloud_llm_model,
+    )
 
 
 def _mean(values: list[float]) -> float:
@@ -332,8 +498,8 @@ def report(rows: list[dict], scores: dict[str, list[float]]) -> None:
         print(f"  {name:20s} {_mean(values):.3f}   (n={len(values)})")
 
     scored = [r for r in rows if "scores" in r]
-    answerable = [r for r in scored if not r["kind"].startswith("unanswerable")]
-    refusals = [r for r in scored if r["kind"].startswith("unanswerable")]
+    answerable = [r for r in scored if not _is_refusal(r["kind"])]
+    refusals = [r for r in scored if _is_refusal(r["kind"])]
 
     if refusals:
         print(
@@ -348,6 +514,18 @@ def report(rows: list[dict], scores: dict[str, list[float]]) -> None:
             f"\n  Answer relevancy on the {len(answerable)} answerable questions only: "
             f"{_mean([r['scores']['answer_relevancy'] for r in answerable]):.3f}"
         )
+
+    print("\n  by kind:\n")
+    for kind, group in _grouped(scored).items():
+        faith = _mean([r["scores"]["faithfulness"] for r in group])
+        # Relevancy is meaningless where a refusal is the right answer, so it is withheld
+        # rather than printed as a zero somebody will read as a failure.
+        relevancy = (
+            "    n/a"
+            if _is_refusal(kind)
+            else f"{_mean([r['scores']['answer_relevancy'] for r in group]):7.3f}"
+        )
+        print(f"    {kind:22s} n={len(group):3d}   faithful {faith:.3f}   relevancy {relevancy}")
 
     print("\n  per question:")
     for row in scored:

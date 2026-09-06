@@ -243,6 +243,54 @@ class CoverageResponse(BaseModel):
     seasons: list[CoverageSeason]
     catalogue: list[CatalogueEntry]
     catalogue_verified: str
+
+
+class RagasRow(BaseModel):
+    question: str
+    kind: str
+    faithfulness: float
+    context_precision: float
+    answer_relevancy: float
+
+
+class RagasUnanswerable(BaseModel):
+    count: int
+    faithfulness: float | None = None
+
+
+class RagasKind(BaseModel):
+    count: int
+    faithfulness: float | None = None
+    # Null where a refusal is the right answer: RAGAS scores one as irrelevant by design,
+    # so an average there would grade the assistant down for behaving correctly.
+    answer_relevancy: float | None = None
+
+
+class RagasEvaluation(BaseModel):
+    """A dated RAGAS run over the scouting assistant, as published by scripts/eval_ragas.py.
+
+    `answerable_relevancy` is reported separately from the headline mean because RAGAS
+    scores a refusal as irrelevant by design: the questions written to have no answer in
+    the data drag the average down for behaving correctly, and averaging them in would
+    reward an assistant that made something up instead.
+    """
+
+    measured_on: str
+    answer_model: str
+    judge_model: str
+    questions: int
+    metrics: dict[str, float | None]
+    unanswerable: RagasUnanswerable
+    answerable_relevancy: float | None = None
+    # Every model that answered and every model that judged, read off the rows. More than
+    # one of either means the run was finished on a different model after a quota ran out,
+    # which makes comparisons between categories unreliable.
+    answer_models: list[str] = []
+    judges: list[str] = []
+    by_kind: dict[str, RagasKind] = {}
+    rows: list[RagasRow] = []
+
+
 class TeamStrengthOut(BaseModel):
     team_id: int
     name: str

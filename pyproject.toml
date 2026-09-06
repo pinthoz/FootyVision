@@ -93,6 +93,11 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+# The published evaluation travels with the package: the API serves it, so a wheel
+# without it answers 404 where a checkout answers with the scores.
+[tool.setuptools.package-data]
+"footyvision.eval" = ["*.json"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"
