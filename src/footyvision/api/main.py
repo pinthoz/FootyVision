@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from footyvision import __version__
+from footyvision.api import docs
 from footyvision.api.routers import (
     assistant,
     coverage,
@@ -18,6 +19,9 @@ from footyvision.api.routers import (
 from footyvision.config import get_settings
 
 app = FastAPI(
+    # The generated Swagger page is replaced by a themed one in api/docs.py; the schema
+    # behind it is untouched, so the reference stays generated rather than written.
+    docs_url=None,
     title="FootyVision API",
     version=__version__,
     description="AI football scouting platform — similarity, talent scoring and LLM reports.",
@@ -44,6 +48,9 @@ app.include_router(search.router)
 app.include_router(talent.router)
 app.include_router(metrics.router)
 app.include_router(assistant.router)
+
+# After the routers, because the page is built from the schema they define.
+docs.install(app)
 
 
 @app.get("/", tags=["meta"])
