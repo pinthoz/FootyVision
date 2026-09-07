@@ -24,6 +24,10 @@ from footyvision.ml.talent import (
 router = APIRouter(tags=["talent"])
 
 
+def _round(value: float | None) -> float | None:
+    return None if value is None else round(value, 3)
+
+
 def _frame(session: Session, min_minutes: float | None):
     mm = get_settings().min_minutes if min_minutes is None else min_minutes
     return load_feature_frame(session, mm)
@@ -85,6 +89,8 @@ def model_info(
         task="position-group classification",
         classes=tm.classes,
         test_accuracy=round(tm.test_accuracy, 3),
+        balanced_accuracy=_round(tm.balanced_accuracy),
+        per_class_recall=tm.per_class_recall,
         n_train=tm.n_train,
         n_test=tm.n_test,
         features=tm.features,
@@ -92,12 +98,16 @@ def model_info(
         role_model=RoleModelInfo(
             classes=rm.classes,
             test_accuracy=round(rm.test_accuracy, 3),
+            balanced_accuracy=_round(rm.balanced_accuracy),
+            per_class_recall=rm.per_class_recall,
             n_train=rm.n_train,
             n_test=rm.n_test,
         ),
         exact_model=RoleModelInfo(
             classes=em.classes,
             test_accuracy=round(em.test_accuracy, 3),
+            balanced_accuracy=_round(em.balanced_accuracy),
+            per_class_recall=em.per_class_recall,
             n_train=em.n_train,
             n_test=em.n_test,
             top3_accuracy=(round(em.top3_accuracy, 3) if em.top3_accuracy is not None else None),

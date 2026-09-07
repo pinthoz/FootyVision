@@ -154,6 +154,13 @@ class RoleModelInfo(BaseModel):
     # Only meaningful where there are enough classes for a single-label score to
     # understate the model — reported for the 21-class exact position, not for four groups.
     top3_accuracy: float | None = None
+    # Mean recall over classes, each counting equally. `test_accuracy` counts players, so
+    # the crowded classes decide it; these targets are lopsided enough that the two numbers
+    # tell different stories, and the smaller one is the one a scout needs.
+    balanced_accuracy: float | None = None
+    # Recall per class. The only field that reveals a class the model has stopped
+    # predicting altogether, which no aggregate score will show.
+    per_class_recall: dict[str, float] = {}
 
 
 class ModelInfoResponse(BaseModel):
@@ -162,6 +169,8 @@ class ModelInfoResponse(BaseModel):
     test_accuracy: float
     n_train: int
     n_test: int
+    balanced_accuracy: float | None = None
+    per_class_recall: dict[str, float] = {}
     # Everything the classifier is allowed to see, and which of it actually decides.
     features: list[str] = []
     top_features: list[FeatureImportance] = []
@@ -316,3 +325,78 @@ class TeamStrengthResponse(BaseModel):
     home_advantage: float
     matches: int
     teams: list[TeamStrengthOut] = []
+
+
+class ValueModelInfo(BaseModel):
+    """How well the value model does, on both scales and against doing nothing.
+
+    `r2_log` is computed on log(value), where the model is fitted; `r2_eur` is the same
+    model judged in euros, and it is the smaller number by some distance. Both are given
+    because the log figure on its own reads as far more precision than this model has.
+
+    `mae_eur` means nothing without `baseline_mae_eur` beside it — the error from predicting
+    the training median for every player. The gap between them is the model's entire
+    contribution.
+    """
+
+    features: list[str]
+    r2_log: float
+    r2_eur: float
+    mae_eur: float
+    baseline_mae_eur: float
+    n_train: int
+    n_test: int
+    # What share of held-out players actually fell inside the band, against the 90% it was
+    # fitted for. These have never agreed here, so the measured figure travels with every
+    # prediction rather than living in a footnote.
+    interval_coverage: float | None = None
+    nominal_coverage: float = 0.9
+
+
+class PlayerValue(BaseModel):
+    """A price range for one player, never a price.
+
+    The band is the answer. `predicted_eur` is the median model's point and is included
+    only because a range with no centre is awkward to render — it is not a valuation, and
+    `interval_coverage` on the model says how often the band around it was even right.
+    """
+
+    player_id: int
+    name: str
+    position_group: str
+    predicted_eur: float
+    predicted_low_eur: float
+    predicted_high_eur: float
+    # The Transfermarkt 2015/16 figure, where this player could be matched to one. Absent
+    # for most: it is the training label, not a lookup table, and only 1,019 of the men in
+    # the database have one.
+    market_value_eur: float | None = None
+    # market value minus prediction. Negative means the model prices him above the market.
+    residual_eur: float | None = None
+    model: ValueModelInfo
+
+
+class ValueBargain(BaseModel):
+    player_id: int
+    name: str
+    position_group: str
+    market_value_eur: float
+    predicted_eur: float
+    predicted_low_eur: float
+    predicted_high_eur: float
+    upside_eur: float
+    # True when the market value sits below the bottom of the predicted band, so the
+    # gap is larger than the model's own uncertainty about the player.
+    clears_band: bool
+
+
+class ValueBargains(BaseModel):
+    """Players the model prices above what the market paid.
+
+    `clears_band` is the only column that separates a signal from arithmetic: it is true
+    when the market value falls below the *bottom* of the predicted range, so the gap
+    survives the model's own uncertainty. Rows where it is false are inside the noise.
+    """
+
+    results: list[ValueBargain] = []
+    model: ValueModelInfo

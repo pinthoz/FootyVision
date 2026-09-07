@@ -210,3 +210,18 @@ def test_calibration_is_skipped_when_a_class_is_too_small():
     assert _calibratable(np.array([0, 0, 0, 1, 1, 1]))
     assert not _calibratable(np.array([0, 0, 1, 1, 1]))
     assert not _calibratable(np.array([0, 0, 0, 0]))
+
+
+def test_classifier_reports_balanced_accuracy_and_per_class_recall():
+    """A class the model never predicts has to be visible somewhere.
+
+    Accuracy cannot show it: `Wing Back` scores 0.00 recall on the real pool and the
+    headline number does not move, because there are 441 full backs to be right about and
+    54 wing backs to miss. `per_class_recall` is the only field that says so, which is why
+    it is part of the model rather than something a caller recomputes.
+    """
+    model = train_position_classifier(_synthetic(), target="position_group")
+
+    assert model.balanced_accuracy is not None
+    assert set(model.per_class_recall) == set(model.classes)
+    assert all(0.0 <= r <= 1.0 for r in model.per_class_recall.values())

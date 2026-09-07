@@ -9,7 +9,7 @@ a per-player *style profile* (how FWD/MID/DEF-like they play) and *role mismatch
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +17,7 @@ import joblib
 import numpy as np
 import pandas as pd
 from sklearn.calibration import CalibratedClassifierCV
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, balanced_accuracy_score, recall_score
 from sklearn.model_selection import train_test_split
 from xgboost import XGBClassifier
 
@@ -77,6 +77,16 @@ class TalentModel:
     # With 21 exact positions a single-label score understates a model that is useful
     # anyway: a scout accepts "one of these three" and works from there.
     top3_accuracy: float | None = None
+    # Mean recall across classes, each weighted equally regardless of size. Accuracy is
+    # dominated by the big classes and these targets are lopsided — 5:1 across the four
+    # groups, 116:1 across the 23 exact positions — so the two numbers come apart badly:
+    # the role model is 74% accurate and 59% balanced, and the exact model 46% against 30%.
+    balanced_accuracy: float | None = None
+    # Recall per class, which is where a dead class shows up and nothing else reveals it.
+    # `Wing Back` scores 0.00 here: ten of the fourteen held-out wing backs are predicted
+    # as full backs, and the headline accuracy never moves, because there are 441 full
+    # backs to be right about and 54 wing backs to miss.
+    per_class_recall: dict[str, float] = field(default_factory=dict)
 
     def predict_proba(self, x):
         """Calibrated probabilities when available, raw ones otherwise."""
@@ -91,10 +101,22 @@ def train_position_classifier(
 ) -> TalentModel:
     """Fit the position classifier at whatever granularity `target` names.
 
-    `position_group` gives the four broad groups; `position_role` gives the ten
-    side-agnostic roles. The exact StatsBomb position is deliberately not shipped as a
-    product surface: see `position_role` in ml/features.py for why its left/right half is
-    not learnable from these features.
+    `position_group` gives the four broad groups; `position_role` the ten side-agnostic
+    roles; `primary_position` the 23 exact StatsBomb positions, which /players/{id}/score
+    ships as `predicted_position` and a three-name shortlist.
+
+    Read `balanced_accuracy` beside `test_accuracy` on the finer two. The targets are
+    lopsided — 5:1 across the groups, 116:1 across the exact positions, where two classes
+    have two examples between them — and accuracy counts players, so the crowded classes
+    decide it. The role model is 75% accurate and 60% balanced.
+
+    Class weights were measured and are deliberately not used. Balanced sample weights move
+    `Wing Back` from 0.00 recall to 0.07 and cost 1.5 points of accuracy, which is not a
+    rescued class, it is a rounding error bought at a price. Ten of the fourteen held-out
+    wing backs are predicted as full backs, and that is the model being right about the
+    football: the two roles have the same per-90 shape, and what separates them is whether
+    the side plays a back three — a property of the team, which none of these features
+    carry. Reweighting cannot conjure a distinction the features do not contain.
     """
     data = frame[frame[target] != "Unknown"].copy()
     if target == "position_group":
@@ -138,10 +160,28 @@ def train_position_classifier(
         calibrator.fit(x_tr, y_tr)
 
     scorer = calibrator or model
-    acc = float(accuracy_score(y_te, scorer.predict(x_te)))
+    predicted = scorer.predict(x_te)
+    acc = float(accuracy_score(y_te, predicted))
     top3 = _top_k_accuracy(scorer.predict_proba(x_te), y_te, k=3)
+    # Balanced accuracy and per-class recall are computed over every class the model knows,
+    # including any absent from the held-out split, so a class cannot disappear from the
+    # report by being too rare to be sampled.
+    labels = list(range(len(classes)))
+    balanced = float(balanced_accuracy_score(y_te, predicted))
+    recalls = recall_score(y_te, predicted, labels=labels, average=None, zero_division=0)
+    per_class = {name: round(float(r), 3) for name, r in zip(classes, recalls, strict=True)}
     return TalentModel(
-        model, classes, features, acc, len(x_tr), len(x_te), target, calibrator, top3
+        model,
+        classes,
+        features,
+        acc,
+        len(x_tr),
+        len(x_te),
+        target,
+        calibrator,
+        top3,
+        balanced,
+        per_class,
     )
 
 
@@ -254,8 +294,15 @@ def _cached(key: str, filename: str, target: str, frame: pd.DataFrame) -> Talent
     if disk_path.is_file():
         try:
             loaded = joblib.load(disk_path)
-            fits_columns = isinstance(loaded, TalentModel) and set(loaded.features).issubset(
-                frame.columns
+            # A pickled dataclass restores the attributes it was saved with, not the ones
+            # this class now declares, so an artifact written before a field existed comes
+            # back missing it and fails at the point of use rather than here. Checking the
+            # full field set retrains instead, and covers every future field for free.
+            current_fields = {f.name for f in fields(TalentModel)}
+            fits_columns = (
+                isinstance(loaded, TalentModel)
+                and current_fields.issubset(vars(loaded))
+                and set(loaded.features).issubset(frame.columns)
             )
             # Rows are dropped for tiny classes and unknown targets, so an exact match is
             # too strict; a pool that moved by more than a few percent is a different pool.
