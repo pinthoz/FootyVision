@@ -153,6 +153,40 @@ def talent_report(
         console.print(mism)
 
 
+@app.command("precompute")
+def precompute_predictions() -> None:
+    """Write the model outputs the API serves, so it need not load the models itself.
+
+    Loading three XGBoost classifiers costs 250MB, which is most of a 512MB container and
+    was enough to have the deployment restarted under load. Everything they are asked at
+    request time depends only on a player's own feature row, so it is computed here.
+    """
+    from footyvision.ml import precompute
+    from footyvision.ml.features import load_feature_frame
+
+    settings = get_settings()
+    with SessionLocal() as session:
+        frame = load_feature_frame(session, settings.min_minutes)
+
+    console.print(f"[cyan]Fitting the three classifiers over {len(frame)} rows...[/cyan]")
+    payload = precompute.build(frame)
+    console.print("[cyan]Fitting team attack/defence per competition...[/cyan]")
+    with SessionLocal() as session:
+        payload["teams"] = precompute.build_team_strengths(session)
+    path = precompute.save(payload)
+    size = path.stat().st_size / 1e6
+    console.print(
+        f"[green]{len(payload['players'])} players written to {path} ({size:.1f} MB).[/green]"
+    )
+    for name, meta in payload["models"].items():
+        dead = [c for c, r in meta["per_class_recall"].items() if r == 0.0]
+        console.print(
+            f"  {name:18} {len(meta['classes']):2d} classes  acc {meta['test_accuracy']:.3f}"
+            f"  balanced {meta['balanced_accuracy']:.3f}"
+            + (f"  [yellow]never predicted: {', '.join(dead)}[/yellow]" if dead else "")
+        )
+
+
 @app.command("value-report")
 def value_report(
     min_minutes: int | None = typer.Option(None, "--min-minutes"),

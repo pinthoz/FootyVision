@@ -93,6 +93,12 @@ class TalentModel:
         return (self.calibrator or self.model).predict_proba(x)
 
 
+# Below this many player-seasons a class is dropped rather than modelled. Ten is chosen
+# so that a 25% test split leaves at least a couple of examples to score against; the two
+# classes this removes from the 23-position target have three and two rows between them.
+MIN_CLASS_SIZE = 10
+
+
 def train_position_classifier(
     frame: pd.DataFrame,
     test_size: float = 0.25,
@@ -102,8 +108,11 @@ def train_position_classifier(
     """Fit the position classifier at whatever granularity `target` names.
 
     `position_group` gives the four broad groups; `position_role` the ten side-agnostic
-    roles; `primary_position` the 23 exact StatsBomb positions, which /players/{id}/score
-    ships as `predicted_position` and a three-name shortlist.
+    roles; `primary_position` the exact StatsBomb positions, which /players/{id}/score
+    ships as a three-name shortlist and deliberately not as a single label — its top pick
+    is right 47% of the time, 42% of its misses are pure left/right swaps, and stripping
+    the side off its answers agrees with the true role less often than `position_role`
+    does when asked directly.
 
     Read `balanced_accuracy` beside `test_accuracy` on the finer two. The targets are
     lopsided — 5:1 across the groups, 116:1 across the exact positions, where two classes
@@ -121,9 +130,12 @@ def train_position_classifier(
     data = frame[frame[target] != "Unknown"].copy()
     if target == "position_group":
         data = data[data[target].isin(_TRAIN_GROUPS)]
-    # A class with a single example cannot be split into train and test.
+    # A class needs enough examples to be learned *and* to be measured. Two is the floor
+    # for splitting at all, and it is not enough for either: `Right Attacking Midfield`
+    # has two player-seasons in the whole database, landed zero of them in the held-out
+    # split, and was still reported at 0.00 recall — a score for a class nobody tested.
     counts_all = data[target].value_counts()
-    data = data[data[target].isin(counts_all[counts_all >= 2].index)]
+    data = data[data[target].isin(counts_all[counts_all >= MIN_CLASS_SIZE].index)]
 
     classes = sorted(data[target].unique())
     code = {c: i for i, c in enumerate(classes)}
@@ -278,6 +290,13 @@ _CACHE: dict[str, TalentModel] = {}
 _SHAP_CACHE: dict[str, list[dict[str, Any]]] = {}
 
 
+def data_counts(frame: pd.DataFrame, target: str) -> dict[str, int]:
+    """How many player-seasons each class of `target` has in the pool as it stands."""
+    if target not in frame.columns:
+        return {}
+    return frame[frame[target] != "Unknown"][target].value_counts().to_dict()
+
+
 def _cached(key: str, filename: str, target: str, frame: pd.DataFrame) -> TalentModel:
     """Serve a model from memory, then from disk, and only then pay to fit it.
 
@@ -299,9 +318,16 @@ def _cached(key: str, filename: str, target: str, frame: pd.DataFrame) -> Talent
             # back missing it and fails at the point of use rather than here. Checking the
             # full field set retrains instead, and covers every future field for free.
             current_fields = {f.name for f in fields(TalentModel)}
+            # A class the current threshold would have dropped means the artifact was fitted
+            # under a different policy, which neither the field set nor the pool size can
+            # see: both stayed identical when MIN_CLASS_SIZE went from 2 to 10, and a
+            # 23-class model was served by a build that only knows about 21.
+            counts = data_counts(frame, target)
+            same_policy = all(counts.get(cls, 0) >= MIN_CLASS_SIZE for cls in loaded.classes)
             fits_columns = (
                 isinstance(loaded, TalentModel)
                 and current_fields.issubset(vars(loaded))
+                and same_policy
                 and set(loaded.features).issubset(frame.columns)
             )
             # Rows are dropped for tiny classes and unknown targets, so an exact match is

@@ -12,7 +12,7 @@ from footyvision.api.schemas import (
 )
 from footyvision.config import get_settings
 from footyvision.db.base import get_session
-from footyvision.ml.features import load_feature_frame
+from footyvision.ml.features import cached_feature_frame
 from footyvision.ml.similarity import find_similar, radar_percentiles
 
 router = APIRouter(prefix="/players", tags=["similarity"])
@@ -31,8 +31,11 @@ def similar_players(
     season_id: int | None = Query(None, description="StatsBomb season_id to scope the pool."),
     session: Session = Depends(get_session),
 ) -> SimilarResponse:
-    frame = load_feature_frame(
-        session, _resolve_min_minutes(min_minutes), competition_id, season_id
+    frame = cached_feature_frame(
+        session,
+        min_minutes=_resolve_min_minutes(min_minutes),
+        competition_id=competition_id,
+        season_id=season_id,
     )
     result = find_similar(frame, player_id, top_n)
     if result is None:
@@ -78,8 +81,11 @@ def player_radar(
     season_id: int | None = Query(None),
     session: Session = Depends(get_session),
 ) -> RadarResponse:
-    frame = load_feature_frame(
-        session, _resolve_min_minutes(min_minutes), competition_id, season_id
+    frame = cached_feature_frame(
+        session,
+        min_minutes=_resolve_min_minutes(min_minutes),
+        competition_id=competition_id,
+        season_id=season_id,
     )
     result = radar_percentiles(frame, player_id)
     if result is None:

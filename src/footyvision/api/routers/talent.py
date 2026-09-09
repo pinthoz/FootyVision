@@ -11,26 +11,44 @@ from footyvision.api.schemas import (
 )
 from footyvision.config import get_settings
 from footyvision.db.base import get_session
-from footyvision.ml.features import load_feature_frame
+from footyvision.ml import precompute
+from footyvision.ml.features import cached_feature_frame
 from footyvision.ml.scoring import performance_score, rank_players
-from footyvision.ml.talent import (
-    get_cached_exact_model,
-    get_cached_importance,
-    get_cached_model,
-    get_cached_role_model,
-    style_profile,
-)
 
+# Deliberately no import of footyvision.ml.talent here, and none of sklearn or xgboost
+# through it. Everything the models are asked at request time depends only on a player's
+# own feature row, so it is computed once by `footyvision precompute` and read back from
+# JSON: importing those libraries costs 76MB and loading the three fitted models another
+# 175MB, against a 512MB container that was being restarted under load. The training code
+# is imported lazily below, and only where the published file is missing or stale.
 router = APIRouter(tags=["talent"])
+
+_PREDICTIONS: dict = {}
 
 
 def _round(value: float | None) -> float | None:
     return None if value is None else round(value, 3)
 
 
+def _predictions(frame) -> dict:
+    """The published model outputs, falling back to fitting them when there are none.
+
+    The fallback is for a working copy that has not run `footyvision precompute` yet. It
+    pulls in the whole ML stack, which is exactly what the published file exists to avoid,
+    so a deployment should never take this path — and if it does, the memory it costs is
+    the symptom that the file was not deployed.
+    """
+    if "payload" not in _PREDICTIONS:
+        payload = precompute.load()
+        if precompute.stale_for(payload, frame):
+            payload = precompute.build(frame)
+        _PREDICTIONS["payload"] = payload
+    return _PREDICTIONS["payload"]
+
+
 def _frame(session: Session, min_minutes: float | None):
     mm = get_settings().min_minutes if min_minutes is None else min_minutes
-    return load_feature_frame(session, mm)
+    return cached_feature_frame(session, min_minutes=mm)
 
 
 @router.get("/players/{player_id}/score", response_model=ScoreResponse)
@@ -44,20 +62,19 @@ def player_score(
     score = performance_score(frame, player_id)
     if score is None:
         raise HTTPException(status_code=404, detail="Player not found in the feature pool.")
-    profile = style_profile(get_cached_model(frame), frame, player_id) or {}
-    roles = style_profile(get_cached_role_model(frame), frame, player_id) or {}
+    player = _predictions(frame)["players"].get(str(player_id), {})
+    profile = player.get("group", {})
+    roles = player.get("role", {})
     best_role, confidence = (None, None)
     if roles:
         best_role, confidence = max(roles.items(), key=lambda kv: kv[1])
-    exact = style_profile(get_cached_exact_model(frame), frame, player_id) or {}
-    shortlist = [name for name, _ in sorted(exact.items(), key=lambda kv: -kv[1])[:3]]
+    shortlist = player.get("exact_shortlist", [])
     return ScoreResponse(
         **score,
         style_profile=profile,
         predicted_role=best_role,
         role_confidence=confidence,
         role_profile=roles,
-        predicted_position=shortlist[0] if shortlist else None,
         position_shortlist=shortlist,
     )
 
@@ -81,35 +98,31 @@ def model_info(
     min_minutes: float | None = Query(None), session: Session = Depends(get_session)
 ) -> ModelInfoResponse:
     """Evaluation of the position classifiers (honest held-out accuracy, both grains)."""
-    frame = _frame(session, min_minutes)
-    tm = get_cached_model(frame)
-    rm = get_cached_role_model(frame)
-    em = get_cached_exact_model(frame)
+    payload = _predictions(_frame(session, min_minutes))
+    models = payload["models"]
+    group = models["position_group"]
     return ModelInfoResponse(
         task="position-group classification",
-        classes=tm.classes,
-        test_accuracy=round(tm.test_accuracy, 3),
-        balanced_accuracy=_round(tm.balanced_accuracy),
-        per_class_recall=tm.per_class_recall,
-        n_train=tm.n_train,
-        n_test=tm.n_test,
-        features=tm.features,
-        top_features=get_cached_importance(tm, frame),
-        role_model=RoleModelInfo(
-            classes=rm.classes,
-            test_accuracy=round(rm.test_accuracy, 3),
-            balanced_accuracy=_round(rm.balanced_accuracy),
-            per_class_recall=rm.per_class_recall,
-            n_train=rm.n_train,
-            n_test=rm.n_test,
-        ),
-        exact_model=RoleModelInfo(
-            classes=em.classes,
-            test_accuracy=round(em.test_accuracy, 3),
-            balanced_accuracy=_round(em.balanced_accuracy),
-            per_class_recall=em.per_class_recall,
-            n_train=em.n_train,
-            n_test=em.n_test,
-            top3_accuracy=(round(em.top3_accuracy, 3) if em.top3_accuracy is not None else None),
-        ),
+        classes=group["classes"],
+        test_accuracy=group["test_accuracy"],
+        balanced_accuracy=group["balanced_accuracy"],
+        per_class_recall=group["per_class_recall"],
+        n_train=group["n_train"],
+        n_test=group["n_test"],
+        features=group["features"],
+        top_features=payload["top_features"],
+        role_model=_role_info(models["position_role"]),
+        exact_model=_role_info(models["primary_position"]),
+    )
+
+
+def _role_info(meta: dict) -> RoleModelInfo:
+    return RoleModelInfo(
+        classes=meta["classes"],
+        test_accuracy=meta["test_accuracy"],
+        balanced_accuracy=meta["balanced_accuracy"],
+        per_class_recall=meta["per_class_recall"],
+        n_train=meta["n_train"],
+        n_test=meta["n_test"],
+        top3_accuracy=meta.get("top3_accuracy"),
     )

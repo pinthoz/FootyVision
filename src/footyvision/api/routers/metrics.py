@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from footyvision.api.schemas import DistributionPoint, DistributionResponse
 from footyvision.config import get_settings
 from footyvision.db.base import get_session
-from footyvision.ml.features import PER90_FEATURES, load_feature_frame
+from footyvision.ml.features import PER90_FEATURES, cached_feature_frame
 
 router = APIRouter(tags=["metrics"])
 
@@ -28,7 +28,7 @@ def metric_distribution(
         raise HTTPException(status_code=422, detail=f"Unknown metric: {metric}")
 
     floor = get_settings().min_minutes if min_minutes is None else min_minutes
-    frame = load_feature_frame(session, floor)
+    frame = cached_feature_frame(session, min_minutes=floor)
     if position_group:
         frame = frame[frame["position_group"] == position_group]
 

@@ -15,16 +15,19 @@ and holds no label from one.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import joblib
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from footyvision.api.schemas import PlayerValue, ValueBargain, ValueBargains, ValueModelInfo
-from footyvision.config import get_settings
 from footyvision.db.base import get_session
-from footyvision.ml.features import PER90_FEATURES, load_feature_frame
-from footyvision.ml.talent import MODELS_DIR
-from footyvision.ml.value import ValueModel, match_values, predict_values, train_value_model
+
+# No import of footyvision.ml.value here, and so none of lightgbm. What the endpoints
+# serve is a table of already-priced players plus a handful of scalars, and unpickling a
+# fitted LGBMRegressor to read them would drag the library into a container that has no
+# room for it. The training code is imported lazily, in the one function that fits.
 
 router = APIRouter(tags=["value"])
 
@@ -32,7 +35,7 @@ router = APIRouter(tags=["value"])
 # This is not just a speed cache. The training labels come from two Kaggle CSVs totalling
 # 47MB that are gitignored and therefore absent from every deployment, so in production
 # this artifact is the only way these endpoints can answer at all.
-ARTIFACT = MODELS_DIR.parent / "value" / "value_model.joblib"
+ARTIFACT = Path(__file__).resolve().parents[3] / "models" / "value" / "value_model.joblib"
 
 # Training walks the feature frame, fuzzy-matches five thousand names and fits three
 # LightGBM models — several seconds, far too slow per request and static between imports.
@@ -41,9 +44,12 @@ _CACHE: dict[str, object] = {}
 
 def _train(session: Session):
     """Fit from the Kaggle CSVs. Only possible where they are present, i.e. locally."""
+    from footyvision.config import get_settings
     from footyvision.etl.transfermarkt import read_market_values_2016
+    from footyvision.ml.features import PER90_FEATURES, cached_feature_frame
+    from footyvision.ml.value import match_values, predict_values, train_value_model
 
-    features = load_feature_frame(session, get_settings().min_minutes)
+    features = cached_feature_frame(session, min_minutes=get_settings().min_minutes)
     # Men only. The value source is four men's leagues, so a women's-league player can
     # only ever match a man of a similar name — 76 of them did before this guard, and
     # every one of those labels was somebody else's.
@@ -51,7 +57,27 @@ def _train(session: Session):
         features = features[features["gender"] == "male"]
     merged = match_values(features, read_market_values_2016(), keep_cols=("value_eur",))
     model = train_value_model(merged, feature_cols=[*PER90_FEATURES, "age"])
-    return model, predict_values(model, merged)
+    return _metrics_of(model), predict_values(model, merged)
+
+
+def _metrics_of(model) -> dict:
+    """The scalars the API reports, lifted out of the fitted model.
+
+    Stored instead of the model itself so that reading them back needs no lightgbm: what
+    is served is a number, and a number does not need the machine that produced it.
+    """
+    return {
+        "features": model.features,
+        "r2_log": round(model.r2, 3),
+        "r2_eur": round(model.r2_eur, 3),
+        "mae_eur": round(model.mae_eur, 0),
+        "baseline_mae_eur": round(model.baseline_mae_eur, 0),
+        "n_train": model.n_train,
+        "n_test": model.n_test,
+        "interval_coverage": (
+            round(model.interval_coverage, 3) if model.interval_coverage is not None else None
+        ),
+    }
 
 
 def _fitted(session: Session):
@@ -85,25 +111,15 @@ def _fitted(session: Session):
     return _CACHE["model"], _CACHE["priced"]
 
 
-def save_artifact(model: ValueModel, priced) -> None:
-    """Persist the pair so a deployment without the Kaggle CSVs can still answer."""
+def save_artifact(model, priced) -> None:
+    """Persist the metrics and the priced table so a deployment can answer without either
+    the Kaggle CSVs or lightgbm."""
     ARTIFACT.parent.mkdir(parents=True, exist_ok=True)
-    joblib.dump((model, priced), ARTIFACT)
+    joblib.dump((_metrics_of(model), priced), ARTIFACT)
 
 
-def _model_info(vm: ValueModel) -> ValueModelInfo:
-    return ValueModelInfo(
-        features=vm.features,
-        r2_log=round(vm.r2, 3),
-        r2_eur=round(vm.r2_eur, 3),
-        mae_eur=round(vm.mae_eur, 0),
-        baseline_mae_eur=round(vm.baseline_mae_eur, 0),
-        n_train=vm.n_train,
-        n_test=vm.n_test,
-        interval_coverage=(
-            round(vm.interval_coverage, 3) if vm.interval_coverage is not None else None
-        ),
-    )
+def _model_info(metrics: dict) -> ValueModelInfo:
+    return ValueModelInfo(**metrics)
 
 
 @router.get("/value/model-info", response_model=ValueModelInfo)
