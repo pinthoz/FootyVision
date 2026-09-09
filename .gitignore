@@ -72,6 +72,10 @@ frontend/web/build/
 data/
 models/*
 !models/talent/
+# The value model ships with the repo for the same reason the talent ones do, and
+# one more: its training labels are two gitignored Kaggle CSVs, so a deployment
+# cannot refit it. Without this file the /value/* endpoints are 503 in production.
+!models/value/
 *.sql
 *.dump
 *.tar

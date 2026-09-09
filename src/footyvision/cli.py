@@ -176,22 +176,44 @@ def value_report(
 
     with SessionLocal() as session:
         features = load_feature_frame(session, mm)
+    # The value source is four men's leagues, so the women's competitions cannot match
+    # anything in it — every pair the fuzzy matcher found for them was a collision with a
+    # man of a similar name. Dropping them here states that, rather than relying on the
+    # token rule to catch it after the fact.
+    if "gender" in features.columns:
+        features = features[features["gender"] == "male"]
     # Age comes from our own players table now, so only the label is taken from the join.
     merged = match_values(features, values, keep_cols=("value_eur",))
     console.print(f"[green]Matched {len(merged)}/{len(features)} players to a value.[/green]")
 
     vm = train_value_model(merged, feature_cols=[*PER90_FEATURES, "age"])
+    # Both scales, and the constant to beat. The log-scale R² is the flattering one and
+    # was the only number printed here; on its own it reads as a model that explains a
+    # fifth of player value, when in euros it explains almost none of it.
     console.print(
-        f"[green]LightGBM value model — R²={vm.r2:.2f}, MAE=€{vm.mae_eur:,.0f}[/green] "
-        f"(train={vm.n_train}, test={vm.n_test})"
+        f"[green]LightGBM value model — R²={vm.r2:.2f} on log(value), "
+        f"{vm.r2_eur:.2f} in euros[/green] (train={vm.n_train}, test={vm.n_test})"
+    )
+    # Written so the API can answer without the Kaggle CSVs, which are gitignored and so
+    # absent from every deployment. Without this the /value/* endpoints are 503 in
+    # production no matter how well the model scores here.
+    from footyvision.api.routers.value import ARTIFACT, save_artifact
+
+    save_artifact(vm, predict_values(vm, merged))
+    console.print(f"[cyan]Model written to {ARTIFACT}[/cyan]")
+
+    edge = vm.baseline_mae_eur - vm.mae_eur
+    console.print(
+        f"[green]MAE €{vm.mae_eur:,.0f} against €{vm.baseline_mae_eur:,.0f} for predicting "
+        f"the median for everyone — an edge of €{edge:,.0f}.[/green]"
     )
     if vm.interval_coverage is not None:
-        # The nominal 10th-90th band is an 80% interval; what it actually catches is
-        # measured and reported instead, because the label is the easy part.
+        # What the band actually catches, not what it was asked for. The label is the easy
+        # part, and the two have never agreed here.
         console.print(
-            f"[green]10th-90th percentile band contains "
+            f"[green]5th-95th percentile band contains "
             f"{vm.interval_coverage:.0%} of held-out players[/green] "
-            f"(nominally 80% — the shortfall is the model being more uncertain than its "
+            f"(nominally 90% — the shortfall is the model being more uncertain than its "
             f"own quantiles admit)."
         )
 
