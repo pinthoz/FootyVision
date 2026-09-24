@@ -11,30 +11,41 @@ import { RADAR_AXES, api, type Distribution } from "../lib/api";
 // beside the dot — a swarm shows shape and hides magnitude.
 
 type Marker = { playerId: number; name: string; color: string };
+/** A selected player this chart cannot show, and the group they belong to instead. */
+type Omitted = { name: string; group: string };
 
 export default function MetricDistribution({
   positionGroup,
   markers,
+  omitted,
 }: {
   positionGroup: string;
   markers: Marker[];
+  omitted?: Omitted | null;
 }) {
   const [metric, setMetric] = useState("xg_per90");
-  const [data, setData] = useState<Distribution | null>(null);
-  const [failed, setFailed] = useState(false);
+  // A response is kept with the request it answered; one for an earlier metric or group
+  // simply does not count, which is what clearing state at the top of the effect used to do.
+  const request = `${metric}|${positionGroup}`;
+  const [result, setResult] = useState<{
+    request: string;
+    data: Distribution | null;
+    failed: boolean;
+  } | null>(null);
+  const current = result?.request === request ? result : null;
+  const data = current?.data ?? null;
+  const failed = current?.failed ?? false;
 
   useEffect(() => {
     let stale = false;
-    setData(null);
-    setFailed(false);
     api
       .distribution(metric, positionGroup)
-      .then((d) => !stale && setData(d))
-      .catch(() => !stale && setFailed(true));
+      .then((d) => !stale && setResult({ request, data: d, failed: false }))
+      .catch(() => !stale && setResult({ request, data: null, failed: true }));
     return () => {
       stale = true;
     };
-  }, [metric, positionGroup]);
+  }, [request, metric, positionGroup]);
 
   const label = RADAR_AXES.find(([key]) => key === metric)?.[1] ?? metric;
   const marked = new Map(markers.map((m) => [m.playerId, m]));
@@ -73,6 +84,16 @@ export default function MetricDistribution({
       </div>
 
       {failed && <div className="chartnote">Could not load the distribution.</div>}
+
+      {/* Not an error. A percentile is a rank within a position group, so a forward has no
+          place on a field of midfielders — but a marker that simply never appears reads as
+          a broken chart, which is how this was reported. */}
+      {omitted && (
+        <div className="chartnote">
+          {omitted.name} is not plotted here — this field is {positionGroup}s only, and{" "}
+          {omitted.group}s are ranked against their own.
+        </div>
+      )}
 
       {data && summary && (
         <div className="chart-frame swarm-frame">

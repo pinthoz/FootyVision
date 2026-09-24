@@ -47,32 +47,39 @@ export default function PlayerPickerModal({
 }: PlayerPickerModalProps) {
   const [query, setQuery] = useState("");
   const [genderFilter, setGenderFilter] = useState<"all" | "female" | "male">(initialGender);
-  const [roster, setRoster] = useState<Player[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (isOpen) {
-      setGenderFilter(initialGender);
-    }
-  }, [isOpen, initialGender]);
+  // Opening the picker adopts the caller's gender filter. Done while rendering, the way
+  // React documents for adjusting state to a prop change, rather than in an effect that
+  // rendered once with the old filter and then again with the new one.
+  const opening = `${isOpen}|${initialGender}`;
+  const [lastOpening, setLastOpening] = useState(opening);
+  if (opening !== lastOpening) {
+    setLastOpening(opening);
+    if (isOpen) setGenderFilter(initialGender);
+  }
+
+  // Results are kept with the search that produced them. The previous version had no guard
+  // against responses arriving out of order, so a slow answer to an earlier keystroke could
+  // replace the answer to the current one.
+  const search = `${query.trim()}|${genderFilter}`;
+  const [found, setFound] = useState<{ search: string; roster: Player[] } | null>(null);
+  const roster = found?.roster ?? [];
+  const isLoading = isOpen && found?.search !== search;
 
   useEffect(() => {
-    if (isOpen) {
-      setIsLoading(true);
-      api
-        .searchPlayers(query.trim(), genderFilter)
-        .then((data) => {
-          setRoster(data);
-          setIsLoading(false);
-        })
-        .catch(() => {
-          setRoster([]);
-          setIsLoading(false);
-        });
-      setTimeout(() => inputRef.current?.focus(), 80);
-    }
-  }, [isOpen, query, genderFilter]);
+    if (!isOpen) return;
+    let stale = false;
+    api
+      .searchPlayers(query.trim(), genderFilter)
+      .then((data) => !stale && setFound({ search, roster: data }))
+      .catch(() => !stale && setFound({ search, roster: [] }));
+    const focus = setTimeout(() => inputRef.current?.focus(), 80);
+    return () => {
+      stale = true;
+      clearTimeout(focus);
+    };
+  }, [isOpen, search, query, genderFilter]);
 
   if (!isOpen) return null;
 

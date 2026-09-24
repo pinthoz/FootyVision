@@ -61,30 +61,49 @@ function PositionLadder({
   const shortlist = score.position_shortlist ?? [];
 
   const rungs = [
-    { label: "Position group", model: { classes: modelInfo.classes, test_accuracy: modelInfo.test_accuracy } },
+    {
+      label: "Position group",
+      model: {
+        classes: modelInfo.classes,
+        test_accuracy: modelInfo.test_accuracy,
+        balanced_accuracy: modelInfo.balanced_accuracy,
+      },
+    },
     modelInfo.role_model && { label: "Side-agnostic role", model: modelInfo.role_model },
     exact && { label: "Exact position", model: exact },
-  ].filter(Boolean) as { label: string; model: { classes: string[]; test_accuracy: number } }[];
+  ].filter(Boolean) as {
+    label: string;
+    model: { classes: string[]; test_accuracy: number; balanced_accuracy?: number | null };
+  }[];
 
   return (
     <>
+      {/* Three names, none of them promoted. The model's single best pick is right 47% of
+          the time and 42% of its misses are pure left/right swaps, so naming one of these
+          as "the" answer claims a side the features cannot carry; one of the three is
+          right 78% of the time, which is a shortlist and worth reading as one. */}
       {shortlist.length > 0 && (
         <p className="why-note">
-          On the metrics alone the exact-position model calls him a{" "}
-          <strong style={{ color: themeColor }}>{shortlist[0]}</strong>
-          {shortlist.length > 1 && (
-            <>
-              , with{" "}
-              {shortlist.slice(1).map((name, i) => (
-                <span key={name}>
-                  {i > 0 && " and "}
-                  <strong>{name}</strong>
-                </span>
-              ))}{" "}
-              next
-            </>
-          )}
-          .
+          On the metrics alone his closest exact positions are{" "}
+          {shortlist.map((name, i) => (
+            <span key={name}>
+              {i > 0 && (i === shortlist.length - 1 ? " and " : ", ")}
+              <strong style={{ color: i === 0 ? themeColor : undefined }}>{name}</strong>
+            </span>
+          ))}
+          . One of the three is right about 78% of the time; picking between them is not
+          something these numbers can do.
+        </p>
+      )}
+
+      {/* The API serves precomputed predictions. After a season is imported and before
+          `footyvision precompute` is re-run they describe the old pool, and nothing else
+          on the page would show it. */}
+      {modelInfo.predictions_stale && (
+        <p className="chartnote">
+          These predictions were computed on {modelInfo.predictions_built_on ?? "an earlier date"}{" "}
+          for a different set of players than the database now holds, so newer players may
+          be missing and figures may be out of date.
         </p>
       )}
 
@@ -113,6 +132,16 @@ function PositionLadder({
                 </span>
                 <span className="why-shap-value">
                   {Math.round(r.model.test_accuracy * 100)}%
+                  {/* Accuracy counts players, so the crowded classes decide it. These
+                      targets run to 116:1, and where the two figures come apart the
+                      smaller one is the honest read: the exact model is 47% accurate and
+                      32% balanced because six of its classes are never predicted at all. */}
+                  {r.model.balanced_accuracy != null && (
+                    <span className="coverage-country">
+                      {" "}
+                      · {Math.round(r.model.balanced_accuracy * 100)}% bal.
+                    </span>
+                  )}
                 </span>
               </span>
               <span className="why-pct">{Math.round(chance * 100)}%</span>
@@ -470,12 +499,12 @@ export default function PlayerCard({
               </span>
             )}
           </span>
-          {/* The four-group call above is the safe one; this is the model actually worth
-              looking at — one of twenty-three exact positions from the metrics alone. Shown
-              beside the group rather than instead of it, because they disagree usefully. */}
-          {score.predicted_position && (
+          {/* The four-group call above is the safe one. This is the finer model, shown as
+              the three positions it cannot choose between rather than as the one it would
+              have named: its top pick is right 47% of the time, one of these three 78%. */}
+          {(score.position_shortlist?.length ?? 0) > 0 && (
             <span className="slot-score-exact">
-              Exact: <strong>{score.predicted_position}</strong>
+              Closest: <strong>{score.position_shortlist!.join(" · ")}</strong>
             </span>
           )}
         </div>
