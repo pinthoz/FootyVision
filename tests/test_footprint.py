@@ -42,12 +42,27 @@ def test_loading_sofifa_data_needs_no_model_library():
     assert _loaded_after("import footyvision.etl.sofifa") == set()
 
 
-def test_the_value_artifact_reads_back_without_lightgbm():
-    """It used to hold a pickled LGBMRegressor, so reading eight scalars imported lightgbm."""
+def test_the_value_artifact_is_plain_json():
+    """It was a pickle, and a pickle carries its writer's libraries into every reader. The
+    first held a fitted LGBMRegressor, so reading eight scalars imported lightgbm; the
+    second held a pandas 3 frame whose text columns were pyarrow arrays, so it would not
+    load at all where pyarrow is absent — which is CI and Render. Parsing it with nothing
+    but the standard library is the guarantee that neither can happen again."""
+    import json
+
     from footyvision.api.routers.value import ARTIFACT
 
     assert ARTIFACT.is_file(), f"missing {ARTIFACT}: run `footyvision value-report`"
-    assert _loaded_after(f"import joblib; joblib.load({str(ARTIFACT)!r})") == set()
+    payload = json.loads(ARTIFACT.read_text(encoding="utf-8"))
+    assert {"r2_eur", "baseline_mae_eur", "interval_coverage"} <= set(payload["metrics"])
+    assert payload["priced"] and {"player_id", "predicted_low", "predicted_high"} <= set(
+        payload["priced"][0]
+    )
+
+
+def test_the_value_endpoints_load_without_a_training_library():
+    code = "from footyvision.api.routers.value import load_artifact; load_artifact()"
+    assert _loaded_after(code) == set()
 
 
 def test_published_predictions_carry_what_the_api_reads():

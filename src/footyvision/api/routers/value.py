@@ -15,9 +15,11 @@ and holds no label from one.
 
 from __future__ import annotations
 
+import json
+import logging
 from pathlib import Path
 
-import joblib
+import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
@@ -30,6 +32,7 @@ from footyvision.db.base import get_session
 # room for it. The training code is imported lazily, in the one function that fits.
 
 router = APIRouter(tags=["value"])
+logger = logging.getLogger(__name__)
 
 # The trained model and the frame it priced, written here by `footyvision value-report`.
 # This is not just a speed cache. The training labels come from two Kaggle CSVs totalling
@@ -40,7 +43,13 @@ router = APIRouter(tags=["value"])
 # file wrote the artifact to src/models/ and left the committed one at models/value/
 # untouched — still holding a pickled LGBMRegressor, so production would have imported
 # lightgbm to read a handful of scalars, which is the whole cost this was meant to avoid.
-ARTIFACT = Path(__file__).resolve().parents[4] / "models" / "value" / "value_model.joblib"
+#
+# JSON, not a pickle. The pickle was written by a pandas 3 with pyarrow installed, which
+# stores text columns as pyarrow arrays, so reading it back required pyarrow — present on
+# the machine that wrote it, absent from CI and from Render, where the endpoints would have
+# answered 503. A pickle carries the writer's library versions into every reader; plain
+# records carry nothing but values.
+ARTIFACT = Path(__file__).resolve().parents[4] / "models" / "value" / "value_model.json"
 
 # Training walks the feature frame, fuzzy-matches five thousand names and fits three
 # LightGBM models — several seconds, far too slow per request and static between imports.
@@ -96,10 +105,12 @@ def _fitted(session: Session):
     if "model" not in _CACHE:
         if ARTIFACT.is_file():
             try:
-                model, priced = joblib.load(ARTIFACT)
-                _CACHE["model"], _CACHE["priced"] = model, priced
+                _CACHE["model"], _CACHE["priced"] = load_artifact()
             except Exception:
-                pass
+                # Logged, not swallowed: an unreadable artifact used to fall through to the
+                # training path in silence and surface as a 503 about missing CSVs, which
+                # names the wrong cause.
+                logger.exception("could not read %s; trying to fit instead", ARTIFACT)
     if "model" not in _CACHE:
         try:
             _CACHE["model"], _CACHE["priced"] = _train(session)
@@ -112,17 +123,28 @@ def _fitted(session: Session):
                     "The value model is unavailable: no pre-fitted artifact was deployed, "
                     "and fitting one needs two Kaggle CSVs that are not in the repository "
                     "and the `train` extra. Run `footyvision value-report` where both are "
-                    "present and deploy models/value/value_model.joblib."
+                    "present and deploy models/value/value_model.json."
                 ),
             ) from exc
     return _CACHE["model"], _CACHE["priced"]
 
 
-def save_artifact(model, priced) -> None:
-    """Persist the metrics and the priced table so a deployment can answer without either
-    the Kaggle CSVs or lightgbm."""
+def save_artifact(model, priced: pd.DataFrame) -> None:
+    """Persist the metrics and the priced table so a deployment can answer without the
+    Kaggle CSVs, lightgbm, or any particular version of pandas."""
     ARTIFACT.parent.mkdir(parents=True, exist_ok=True)
-    joblib.dump((_metrics_of(model), priced), ARTIFACT)
+    payload = {
+        "metrics": _metrics_of(model),
+        # `to_json` writes NaN as null, which the standard library reads back as None.
+        "priced": json.loads(priced.to_json(orient="records")),
+    }
+    ARTIFACT.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+
+def load_artifact() -> tuple[dict, pd.DataFrame]:
+    """The published metrics and priced table, rebuilt from plain values."""
+    payload = json.loads(ARTIFACT.read_text(encoding="utf-8"))
+    return payload["metrics"], pd.DataFrame.from_records(payload["priced"])
 
 
 def _model_info(metrics: dict) -> ValueModelInfo:
