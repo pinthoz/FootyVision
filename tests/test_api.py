@@ -337,8 +337,67 @@ def test_clients_are_told_apart_by_the_forwarded_header():
             self.headers = Headers({"x-forwarded-for": forwarded} if forwarded else {})
             self.client = None
 
-    assert client_key(_Request("203.0.113.7, 10.0.0.1")) == "203.0.113.7"
+    # The rightmost hop is the one the proxy in front of the app wrote.
+    assert client_key(_Request("203.0.113.7, 10.0.0.1")) == "10.0.0.1"
+    assert client_key(_Request("198.51.100.4")) == "198.51.100.4"
     assert client_key(_Request(None)) == "unknown"
+
+
+def test_a_forged_forwarded_header_does_not_buy_a_fresh_limit(monkeypatch):
+    """Proxies append to X-Forwarded-For, so whatever sits on the left is the client's own
+    invention. Keying on it let a caller send a new value per request and never be
+    throttled, which on these endpoints means spending the LLM budget without limit."""
+    from fastapi import HTTPException
+    from starlette.datastructures import Headers
+
+    from footyvision.api import limits
+
+    monkeypatch.setattr(
+        limits, "get_settings", lambda: type("S", (), {"rate_limit_per_minute": 3})()
+    )
+    limits.reset()
+
+    class _Request:
+        def __init__(self, forged):
+            # The client's forgery, then the address Render actually saw.
+            self.headers = Headers({"x-forwarded-for": f"{forged}, 203.0.113.9"})
+            self.client = None
+
+    for i in range(3):
+        limits.rate_limit(_Request(f"10.0.0.{i}"))
+    with pytest.raises(HTTPException) as refused:
+        limits.rate_limit(_Request("10.0.0.99"))
+    assert refused.value.status_code == 429
+    limits.reset()
+
+
+def test_idle_clients_are_forgotten_once_the_table_is_full(monkeypatch):
+    """Windows used to be emptied but never removed, so every distinct caller stayed in
+    memory for the life of the process — a leak with no ceiling on a 512MB instance."""
+    from starlette.datastructures import Headers
+
+    from footyvision.api import limits
+
+    monkeypatch.setattr(
+        limits, "get_settings", lambda: type("S", (), {"rate_limit_per_minute": 5})()
+    )
+    monkeypatch.setattr(limits, "MAX_TRACKED_CLIENTS", 3)
+    clock = [1000.0]
+    monkeypatch.setattr(limits.time, "monotonic", lambda: clock[0])
+    limits.reset()
+
+    class _Request:
+        def __init__(self, ip):
+            self.headers = Headers({"x-forwarded-for": ip})
+            self.client = None
+
+    for ip in ("a", "b", "c"):
+        limits.rate_limit(_Request(ip))
+    clock[0] += limits.WINDOW_SECONDS + 1
+    limits.rate_limit(_Request("d"))
+
+    assert set(limits._HITS) == {"d"}
+    limits.reset()
 
 
 def test_cors_defaults_to_local_development_when_unset():
@@ -355,16 +414,39 @@ def test_cors_defaults_to_local_development_when_unset():
     ]
 
 
-def test_cors_allows_vercel_origins():
+def _allowed_origin(origin: str) -> str | None:
     from fastapi.testclient import TestClient
 
     from footyvision.api.main import app
 
-    client = TestClient(app)
-    response = client.get("/", headers={"Origin": "https://footy-vision-tau.vercel.app"})
-    assert response.status_code == 200
-    assert (
-        response.headers.get("access-control-allow-origin") == "https://footy-vision-tau.vercel.app"
+    response = TestClient(app).get("/", headers={"Origin": origin})
+    return response.headers.get("access-control-allow-origin")
+
+
+def test_cors_admits_the_production_dashboard():
+    """Checked on the header the browser acts on. The old version asserted a 200, which
+    the API returns to any origin whatever CORS decides."""
+    origin = "https://footy-vision-tau.vercel.app"
+    assert _allowed_origin(origin) == origin
+
+
+def test_cors_refuses_other_vercel_apps():
+    """*.vercel.app used to be admitted, so any stranger's free deployment could spend this
+    API's LLM budget from its visitors' browsers — each with a fresh rate-limit bucket."""
+    assert _allowed_origin("https://someone-elses-app.vercel.app") is None
+    assert _allowed_origin("https://footy-vision-abc-someone-else.vercel.app") is None
+
+
+def test_previews_are_admitted_only_for_the_configured_scope():
+    import re
+
+    from footyvision.config import Settings
+
+    rx = re.compile(Settings(cors_preview_scope="pinthozs-projects").allowed_origin_regex)
+    assert rx.fullmatch("https://footy-vision-3f9a1c-pinthozs-projects.vercel.app")
+    assert not rx.fullmatch("https://footy-vision-3f9a1c-other-team.vercel.app")
+    assert not re.compile(Settings().allowed_origin_regex).fullmatch(
+        "https://footy-vision-3f9a1c-pinthozs-projects.vercel.app"
     )
 
 
@@ -468,3 +550,23 @@ def test_the_docs_page_is_themed_and_still_generated(client):
     css = client.get("/static/docs.css")
     assert css.status_code == 200
     assert css.headers["content-type"].startswith("text/css")
+
+
+@pytest.mark.parametrize(
+    ("path", "body"),
+    [
+        ("/assistant", {"question": "x" * 501}),
+        ("/assistant", {"question": "left-footed wingers", "k": 5000}),
+        ("/assistant", {"question": "left-footed wingers", "k": 0}),
+        ("/assistant", {"question": ""}),
+        ("/search", {"query": "x" * 501}),
+    ],
+)
+def test_llm_endpoints_refuse_requests_sized_to_run_up_a_bill(path, body):
+    """One unbounded request could send every profile in the pool to the model, and the
+    rate limiter would count it as one call. Refused before any token is spent."""
+    from fastapi.testclient import TestClient
+
+    from footyvision.api.main import app
+
+    assert TestClient(app).post(path, json=body).status_code == 422

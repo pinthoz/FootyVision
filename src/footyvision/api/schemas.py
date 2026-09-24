@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class PlayerOut(BaseModel):
@@ -87,8 +87,17 @@ class ReportContextResponse(BaseModel):
     context: dict
 
 
+# Bounds on what a caller may send to an endpoint that spends LLM tokens. Unbounded, one
+# request could carry a megabyte of text, or ask the assistant for every player in the
+# pool — 2,562 profiles, several hundred thousand tokens, in a single call that the rate
+# limiter counts as one. The longest question in the 241-question evaluation bank is 66
+# characters and the dashboard asks for six players, so neither limit is close to use.
+MAX_QUESTION_CHARS = 500
+MAX_ASSISTANT_K = 12
+
+
 class NLSearchRequest(BaseModel):
-    query: str
+    query: str = Field(min_length=1, max_length=MAX_QUESTION_CHARS)
 
 
 class SearchResultRow(BaseModel):
@@ -119,8 +128,15 @@ class ScoreResponse(BaseModel):
     predicted_role: str | None = None
     role_confidence: float | None = None
     role_profile: dict[str, float] = {}
-    # The exact position and the model's three best guesses at it.
-    predicted_position: str | None = None
+    # The exact-position model's three best guesses, and deliberately not its first.
+    #
+    # Its top-1 is right 47% of the time and 42% of its errors are pure left/right swaps,
+    # so "Left Center Back" asserted alone claims a side the features cannot carry. Worse,
+    # stripping the side off its predictions leaves 69% agreement with the true role,
+    # against 74% from `predicted_role`, which answers that question directly — so the
+    # single label was both less reliable than the field beside it and confident about the
+    # one thing it could not know. The shortlist contains the truth 78% of the time and
+    # reads as what it is.
     position_shortlist: list[str] = []
 
 
@@ -176,11 +192,16 @@ class ModelInfoResponse(BaseModel):
     top_features: list[FeatureImportance] = []
     role_model: RoleModelInfo | None = None
     exact_model: RoleModelInfo | None = None
+    # When the served predictions were computed, and whether they describe a different
+    # pool from the database in front of them. A season imported without re-running
+    # `footyvision precompute` leaves these answering for a pool that has since changed.
+    predictions_built_on: str | None = None
+    predictions_stale: bool = False
 
 
 class AssistantRequest(BaseModel):
-    question: str
-    k: int = 6
+    question: str = Field(min_length=1, max_length=MAX_QUESTION_CHARS)
+    k: int = Field(6, ge=1, le=MAX_ASSISTANT_K)
 
 
 class AssistantSource(BaseModel):
@@ -200,6 +221,14 @@ class AssistantResponse(BaseModel):
     # source, so an age or foot question drops the women's competitions without ever
     # comparing them, and a caller that cannot see that reads a partial pool as the whole.
     not_considered: dict[str, int] | None = None
+    # Set when the question asked who leads in a metric: the sources are then the top of
+    # the filtered pool by that metric, in order, rather than the closest matches in style.
+    ranked_by: str | None = None
+    # Set when the model stopped because it ran out of tokens rather than because it had
+    # finished. The text has been trimmed back to its last complete sentence so it does not
+    # end mid-word, but it is still a partial answer, and presenting one as whole is the
+    # kind of quiet wrongness this API tries not to ship.
+    truncated: bool = False
 
 
 class DistributionPoint(BaseModel):

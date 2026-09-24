@@ -49,12 +49,8 @@ def _longest_first(mapping: dict[str, str]) -> list[tuple[str, str]]:
     return sorted(mapping.items(), key=lambda kv: -len(kv[0]))
 
 
-ROLE_LOOKUP = _longest_first(
-    {word: role for role, words in ROLE_WORDS.items() for word in words}
-)
-FOOT_LOOKUP = _longest_first(
-    {word: foot for foot, words in FOOT_WORDS.items() for word in words}
-)
+ROLE_LOOKUP = _longest_first({word: role for role, words in ROLE_WORDS.items() for word in words})
+FOOT_LOOKUP = _longest_first({word: foot for foot, words in FOOT_WORDS.items() for word in words})
 TRAIT_LOOKUP = _longest_first(
     {word: column for column, words in TRAIT_WORDS.items() for word in words}
 )
@@ -101,9 +97,8 @@ def main() -> None:
     unparsed = [p.query for p in test_pairs if "role" not in parse(p.query)]
     assert not unparsed, f"{len(unparsed)} queries did not parse, e.g. {unparsed[:3]}"
 
-    attributes = (
-        frame.drop_duplicates("player_id")
-        .set_index(frame.drop_duplicates("player_id")["player_id"].astype(int))
+    attributes = frame.drop_duplicates("player_id").set_index(
+        frame.drop_duplicates("player_id")["player_id"].astype(int)
     )
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -152,8 +147,7 @@ def main() -> None:
     for field in ("role", "foot", "age", "trait", "exact player"):
         if field in hits:
             print(
-                f"  {field:14s} {np.mean(hits[field]):.3f}"
-                f"   (asked in {len(hits[field])} queries)"
+                f"  {field:14s} {np.mean(hits[field]):.3f}   (asked in {len(hits[field])} queries)"
             )
 
     genders = sorted({g for _, g in by_gender})
@@ -168,9 +162,7 @@ def main() -> None:
                 cells += f"{np.mean(values):>14.3f}" if values else f"{'-':>14s}"
             if any(c.strip() != "-" for c in cells.split()):
                 print(f"  {field:14s}{cells}")
-        counts = "".join(
-            f"{len(by_gender.get(('role', g), [])):>14d}" for g in genders
-        )
+        counts = "".join(f"{len(by_gender.get(('role', g), [])):>14d}" for g in genders)
         print(f"  {'queries':14s}{counts}")
 
 

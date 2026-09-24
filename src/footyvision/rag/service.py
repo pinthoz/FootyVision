@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+import numpy as np
 from sqlalchemy.orm import Session
 
 from footyvision.config import get_settings
@@ -69,15 +70,46 @@ def get_store(session: Session, rebuild: bool = False) -> VectorStore:
             _STORE, built_with = stored
             _warn_if_mismatched(built_with)
             _warn_if_stale(session, _STORE)
-            return _STORE
+            return attach_roles(session, _STORE)
         if STORE_PATH.exists():
             logger.info("no index in the database; falling back to %s", STORE_PATH)
             _STORE = VectorStore.load(STORE_PATH)
             _warn_if_stale(session, _STORE)
-            return _STORE
+            return attach_roles(session, _STORE)
 
     _STORE = build_store(session)
-    return _STORE
+    return attach_roles(session, _STORE)
+
+
+def attach_roles(session: Session, store: VectorStore) -> VectorStore:
+    """Give every indexed player the playing role of their most-played season.
+
+    Derived here, from the stats table, rather than stored with the vectors. The role is a
+    pure function of the primary position the database already holds, so storing it too
+    would have meant a migration and re-embedding every profile for a column that can be
+    computed in one query — and would go stale the same way the position already cannot.
+    A player with no recorded position gets none, which the filter treats as failing a
+    role requirement rather than passing it.
+    """
+    from sqlalchemy import select
+
+    from footyvision.db.models import PlayerSeasonStats
+    from footyvision.ml.features import position_role
+
+    rows = session.execute(
+        select(
+            PlayerSeasonStats.player_id,
+            PlayerSeasonStats.primary_position,
+            PlayerSeasonStats.minutes,
+        )
+    ).all()
+    best: dict[int, tuple[float, str | None]] = {}
+    for player_id, position, minutes in rows:
+        if player_id not in best or (minutes or 0) > best[player_id][0]:
+            best[player_id] = (minutes or 0, position)
+    roles = {pid: position_role(pos) for pid, (_, pos) in best.items() if pos}
+    store.position_role = np.asarray([roles.get(int(pid)) for pid in store.ids], dtype=object)
+    return store
 
 
 def _warn_if_mismatched(built_with: str) -> None:

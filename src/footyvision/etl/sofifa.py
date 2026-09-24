@@ -7,11 +7,11 @@ but soccerdata caches every page (re-runs are instant and resumable).
 
 from __future__ import annotations
 
+import math
 import warnings
+from typing import Any
 
 import pandas as pd
-
-from footyvision.ml.value import parse_value_eur
 
 FIFA16_VERSION = 160001
 LA_LIGA = "ESP-La Liga"
@@ -50,3 +50,26 @@ def read_laliga_values(version: int = FIFA16_VERSION) -> pd.DataFrame:
     out["age"] = pd.to_numeric(ratings[age_col], errors="coerce") if age_col else None
     # One row per player (dedupe if a player appears in multiple teams/updates).
     return out.sort_values("value_eur", ascending=False).drop_duplicates("name")
+
+
+# Lives here rather than in ml/value.py, where it used to: it is a parser for this
+# source's text format, and importing it from the model module made loading SoFIFA data
+# require lightgbm, which is a training dependency and absent from the runtime install.
+def parse_value_eur(raw: Any) -> float:
+    """Parse a SoFIFA value ('€5M', '€900K', 5000000, '') into euros; 0 if unknown."""
+    if raw is None or (isinstance(raw, float) and math.isnan(raw)):
+        return 0.0
+    if isinstance(raw, (int, float)):
+        return float(raw)
+    s = str(raw).strip().replace("€", "").replace(",", "")
+    if not s:
+        return 0.0
+    mult = 1.0
+    if s[-1].upper() == "M":
+        mult, s = 1_000_000.0, s[:-1]
+    elif s[-1].upper() == "K":
+        mult, s = 1_000.0, s[:-1]
+    try:
+        return float(s) * mult
+    except ValueError:
+        return 0.0

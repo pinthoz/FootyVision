@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
@@ -22,6 +24,7 @@ from footyvision.ml.scoring import performance_score, rank_players
 # 175MB, against a 512MB container that was being restarted under load. The training code
 # is imported lazily below, and only where the published file is missing or stale.
 router = APIRouter(tags=["talent"])
+logger = logging.getLogger(__name__)
 
 _PREDICTIONS: dict = {}
 
@@ -31,18 +34,38 @@ def _round(value: float | None) -> float | None:
 
 
 def _predictions(frame) -> dict:
-    """The published model outputs, falling back to fitting them when there are none.
+    """The published model outputs; refitted only where the training stack is installed.
 
-    The fallback is for a working copy that has not run `footyvision precompute` yet. It
-    pulls in the whole ML stack, which is exactly what the published file exists to avoid,
-    so a deployment should never take this path — and if it does, the memory it costs is
-    the symptom that the file was not deployed.
+    A working copy with the `train` extra refits when the file is missing or describes a
+    different pool. A deployment has no such extra, and that absence is the safeguard: the
+    refit costs 250MB, and on a 512MB instance attempting it is an out-of-memory restart.
+    So there a stale file is served and marked stale, and a missing one is a 503 naming
+    the command that fixes it.
     """
     if "payload" not in _PREDICTIONS:
         payload = precompute.load()
-        if precompute.stale_for(payload, frame):
-            payload = precompute.build(frame)
-        _PREDICTIONS["payload"] = payload
+        stale = precompute.stale_for(payload, frame)
+        if stale:
+            try:
+                payload, stale = precompute.build(frame), False
+            except ImportError:
+                if payload is None:
+                    raise HTTPException(
+                        status_code=503,
+                        detail=(
+                            "No published model predictions, and the training libraries "
+                            "are not installed here. Run `footyvision precompute` where "
+                            "they are and deploy models/talent/predictions.json."
+                        ),
+                    ) from None
+                logger.warning(
+                    "predictions.json was built on %s for a pool of %s rows; this one has "
+                    "%s. Serving it anyway — run `footyvision precompute` and redeploy.",
+                    payload.get("built_on"),
+                    payload.get("pool"),
+                    len(frame),
+                )
+        _PREDICTIONS["payload"] = {**payload, "stale": stale}
     return _PREDICTIONS["payload"]
 
 
@@ -111,6 +134,8 @@ def model_info(
         n_test=group["n_test"],
         features=group["features"],
         top_features=payload["top_features"],
+        predictions_built_on=payload.get("built_on"),
+        predictions_stale=payload.get("stale", False),
         role_model=_role_info(models["position_role"]),
         exact_model=_role_info(models["primary_position"]),
     )

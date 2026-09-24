@@ -23,12 +23,26 @@ import unicodedata
 # "passes", and "golos esperados" against "golos", or every compound metric collapses
 # into the simple one it contains.
 _VOCABULARY: dict[str, tuple[str, ...]] = {
-    "goals_per90": ("goals", "goalscoring", "golos", "gols"),
+    "goals_per90": ("goals", "goalscoring", "golos", "gols", "scores", "score", "marcam"),
     "xg_per90": ("xg", "expected goals", "golos esperados", "gols esperados"),
-    "shots_per90": ("shots", "shooting", "remates", "chutes"),
+    # The verbs too: questions ask who "shoots" or "remata" at least as often as they
+    # ask about "shots", and a missed metric silently turns a ranking question into a
+    # similarity one.
+    "shots_per90": (
+        "shots",
+        "shooting",
+        "shoot",
+        "shoots",
+        "remates",
+        "rematam",
+        "remata",
+        "chutes",
+    ),
     "assists_per90": ("assists", "assistencias"),
     "passes_completed_per90": (
         "completed passes",
+        "complete the most passes",
+        "complete passes",
         "pass completion",
         "passes completos",
         "passes certos",
@@ -43,7 +57,7 @@ _VOCABULARY: dict[str, tuple[str, ...]] = {
     ),
     "dribbles_per90": ("dribbles", "dribbling", "dribles", "driblar"),
     "progressive_carries_per90": ("progressive carries", "conducoes progressivas"),
-    "carries_per90": ("carries", "conducoes", "conducao"),
+    "carries_per90": ("carries", "conducoes", "conducao", "conduzem", "conduz a bola"),
     "tackles_per90": ("tackles", "tackling", "desarmes", "desarme"),
     "interceptions_per90": ("interceptions", "intercecoes", "intercetacoes"),
     "blocks_per90": ("blocks", "bloqueios"),
@@ -62,6 +76,8 @@ _VOCABULARY: dict[str, tuple[str, ...]] = {
     "pressures_per90": (
         "pressures",
         "pressing",
+        "press",
+        "presses",
         "pressoes",
         "pressionam",
         "pressiona",
@@ -110,6 +126,23 @@ def metrics_in(question: str) -> list[str]:
             found.setdefault(column, match.start())
             break
     return [c for c, _ in sorted(found.items(), key=lambda kv: kv[1])][:MAX_METRICS]
+
+
+# Words that turn a question about a metric into a question about who leads it. English
+# and Portuguese, folded like the question is. "mais" alone is enough: "quem faz mais
+# cortes" asks for an ordering exactly as "who makes the most clearances" does.
+_LEADER_WORDS = re.compile(
+    r"\b(most|highest|lead|leads|leading|leader|leaders|top|more|mais|maior|maiores|lidera|lideram)\b"
+)
+
+
+def asks_for_leaders(question: str) -> bool:
+    """Whether the question wants players ordered by a metric rather than described by one.
+
+    "Which full-backs make the most tackles?" does; "a full-back who tackles well" does
+    not, and is left to similarity, which is the right tool for a description.
+    """
+    return bool(_LEADER_WORDS.search(_fold(question)))
 
 
 def label(column: str) -> str:

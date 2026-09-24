@@ -139,8 +139,10 @@ def corrected(a: pd.Series, b: pd.Series) -> tuple[float, float, int]:
 
 def main() -> None:
     frame = load_matches()
-    print(f"{frame.groupby(KEY).ngroups:,} player-seasons with {MIN_MATCHES}+ matches "
-          f"of {MIN_MATCH_MINUTES}+ minutes\n")
+    print(
+        f"{frame.groupby(KEY).ngroups:,} player-seasons with {MIN_MATCHES}+ matches "
+        f"of {MIN_MATCH_MINUTES}+ minutes\n"
+    )
 
     # Odd and even appearances rather than first and second half, so both sides span the
     # whole season and neither one is "early form".

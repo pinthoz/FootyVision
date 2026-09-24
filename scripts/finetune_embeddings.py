@@ -45,10 +45,23 @@ DOC_PREFIX = "title: none | text: "
 QUERY_PREFIX = "task: search result | query: "
 
 METRICS = [
-    "goals", "assists", "shots", "xg", "passes", "passes_completed",
-    "progressive_passes", "dribbles", "dribbles_completed", "carries",
-    "progressive_carries", "tackles", "interceptions", "blocks", "clearances",
-    "ball_recoveries", "pressures",
+    "goals",
+    "assists",
+    "shots",
+    "xg",
+    "passes",
+    "passes_completed",
+    "progressive_passes",
+    "dribbles",
+    "dribbles_completed",
+    "carries",
+    "progressive_carries",
+    "tackles",
+    "interceptions",
+    "blocks",
+    "clearances",
+    "ball_recoveries",
+    "pressures",
 ]
 PER90 = [f"{m}_per90" for m in METRICS]
 
@@ -195,9 +208,10 @@ def load_frame(min_minutes: int) -> pd.DataFrame:
         ),
         engine,
     )
-    spans["midpoint"] = pd.to_datetime(spans["first"]) + (
-        pd.to_datetime(spans["last"]) - pd.to_datetime(spans["first"])
-    ) / 2
+    spans["midpoint"] = (
+        pd.to_datetime(spans["first"])
+        + (pd.to_datetime(spans["last"]) - pd.to_datetime(spans["first"])) / 2
+    )
     merged = frame[["competition_id", "sb_season_id"]].merge(
         spans[["competition_id", "sb_season_id", "midpoint"]],
         on=["competition_id", "sb_season_id"],
@@ -227,17 +241,14 @@ def build_profiles(frame: pd.DataFrame) -> tuple[dict[int, str], dict]:
             ranked = percentiles.loc[idx].sort_values(ascending=False)
             ranks[int(row["player_id"])] = ranked
             strengths = ", ".join(
-                f"{STYLE_PHRASES[f]} ({row[f]:.2f} per 90, "
-                f"{_ordinal(round(ranked[f]))} percentile)"
+                f"{STYLE_PHRASES[f]} ({row[f]:.2f} per 90, {_ordinal(round(ranked[f]))} percentile)"
                 for f in ranked.index[:4]
             )
             bio = []
             if pd.notna(row["age"]):
                 bio.append(f"{int(round(row['age']))} years old")
             if isinstance(row["foot"], str) and row["foot"]:
-                bio.append(
-                    "two-footed" if row["foot"] == "both" else f"{row['foot']}-footed"
-                )
+                bio.append("two-footed" if row["foot"] == "both" else f"{row['foot']}-footed")
             if pd.notna(row["height_cm"]):
                 bio.append(f"{float(row['height_cm']) / 100:.2f}m tall")
             biography = ", " + ", ".join(bio) if bio else ""
@@ -268,9 +279,7 @@ def build_pairs(frame: pd.DataFrame, seed: int = 42, per_player: int = 3) -> lis
         role_en, role_pt = ROLE_WORDS[role]
 
         ranked = ranks[player_id]
-        trait = next(
-            (f for f in ranked.index if f in TRAIT_WORDS and ranked[f] >= 70), None
-        )
+        trait = next((f for f in ranked.index if f in TRAIT_WORDS and ranked[f] >= 70), None)
         foot = row["foot"] if isinstance(row["foot"], str) else None
 
         shapes = [(role_en, role_pt)]
@@ -329,7 +338,9 @@ def recall_at_k(model, pairs: list[Pair], k: int = 5) -> dict[str, float]:
 
     corpus = model.encode(
         [DOC_PREFIX + profiles[pid] for pid in player_ids],
-        batch_size=16, normalize_embeddings=True, show_progress_bar=False,
+        batch_size=16,
+        normalize_embeddings=True,
+        show_progress_bar=False,
     )
     out: dict[str, float] = {}
     for language in ("pt", "en"):
@@ -338,7 +349,9 @@ def recall_at_k(model, pairs: list[Pair], k: int = 5) -> dict[str, float]:
             continue
         queries = model.encode(
             [QUERY_PREFIX + p.query for p in subset],
-            batch_size=16, normalize_embeddings=True, show_progress_bar=False,
+            batch_size=16,
+            normalize_embeddings=True,
+            show_progress_bar=False,
         )
         top = np.argsort(-(queries @ corpus.T), axis=1)[:, :k]
         out[language] = float(
@@ -356,11 +369,15 @@ def main() -> None:
     parser.add_argument("--eval-only", action="store_true")
     parser.add_argument("--full", action="store_true", help="Full fine-tune, needs ~4GB free.")
     parser.add_argument(
-        "--max-seq-length", type=int, default=192,
+        "--max-seq-length",
+        type=int,
+        default=192,
         help="Profiles run to roughly 130 tokens; padding past that is wasted compute.",
     )
     parser.add_argument(
-        "--max-train", type=int, default=2400,
+        "--max-train",
+        type=int,
+        default=2400,
         help="Cap on training pairs. LM Studio holds most of this card, so the binding "
         "constraint is time, not data, and the shapes per player are near-duplicates.",
     )
@@ -379,8 +396,9 @@ def main() -> None:
     print(f"device: {device}")
     if device == "cuda":
         free, total = torch.cuda.mem_get_info()
-        print(f"gpu: {torch.cuda.get_device_name(0)} "
-              f"({free / 1e9:.1f}GB free of {total / 1e9:.1f}GB)")
+        print(
+            f"gpu: {torch.cuda.get_device_name(0)} ({free / 1e9:.1f}GB free of {total / 1e9:.1f}GB)"
+        )
 
     frame = load_frame(get_settings().min_minutes)
     pairs = build_pairs(frame)
@@ -399,26 +417,37 @@ def main() -> None:
 
         model.add_adapter(
             LoraConfig(
-                task_type="FEATURE_EXTRACTION", r=16, lora_alpha=32, lora_dropout=0.05,
+                task_type="FEATURE_EXTRACTION",
+                r=16,
+                lora_alpha=32,
+                lora_dropout=0.05,
                 target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
             )
         )
         trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
         total_p = sum(p.numel() for p in model.parameters())
-        print(f"LoRA: training {trainable:,} of {total_p:,} parameters "
-              f"({100 * trainable / total_p:.2f}%)")
+        print(
+            f"LoRA: training {trainable:,} of {total_p:,} parameters "
+            f"({100 * trainable / total_p:.2f}%)"
+        )
 
     before = recall_at_k(model, test_pairs, args.k)
-    print(f"BEFORE  recall@{args.k}:  PT {before['pt']:.3f}   EN {before['en']:.3f}   "
-          f"gap {before['gap']:+.3f}", flush=True)
+    print(
+        f"BEFORE  recall@{args.k}:  PT {before['pt']:.3f}   EN {before['en']:.3f}   "
+        f"gap {before['gap']:+.3f}",
+        flush=True,
+    )
 
     if args.eval_only:
         return
 
     if args.max_train and len(train_pairs) > args.max_train:
         train_pairs = random.Random(42).sample(train_pairs, args.max_train)
-        print(f"training on {len(train_pairs)} pairs "
-              f"({len({p.player_id for p in train_pairs})} players)", flush=True)
+        print(
+            f"training on {len(train_pairs)} pairs "
+            f"({len({p.player_id for p in train_pairs})} players)",
+            flush=True,
+        )
 
     dataset = Dataset.from_dict(
         {
@@ -453,8 +482,10 @@ def main() -> None:
     print(f"\nsaved to {OUTPUT_DIR}")
 
     after = recall_at_k(model, test_pairs, args.k)
-    print(f"AFTER   recall@{args.k}:  PT {after['pt']:.3f}   EN {after['en']:.3f}   "
-          f"gap {after['gap']:+.3f}")
+    print(
+        f"AFTER   recall@{args.k}:  PT {after['pt']:.3f}   EN {after['en']:.3f}   "
+        f"gap {after['gap']:+.3f}"
+    )
     print(
         f"\ndelta:  PT {after['pt'] - before['pt']:+.3f}   "
         f"EN {after['en'] - before['en']:+.3f}   "

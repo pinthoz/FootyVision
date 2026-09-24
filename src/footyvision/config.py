@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from functools import lru_cache
 
 from pydantic import Field
@@ -46,6 +47,12 @@ class Settings(BaseSettings):
     # development only: a public deployment must set this to its own frontend, because
     # "*" lets any site on the internet spend this instance's LLM budget.
     cors_origins: str = ""
+    # The Vercel scope (team or account slug) whose preview deployments may call the API,
+    # e.g. "pinthozs-projects" for footy-vision-<hash>-pinthozs-projects.vercel.app. Empty
+    # admits no previews. It used to admit every *.vercel.app: any stranger's free app
+    # could then call these endpoints from its visitors' browsers, each visitor bringing a
+    # fresh IP and so a fresh rate-limit bucket.
+    cors_preview_scope: str = ""
     # Calls per minute per client to the endpoints that invoke an LLM. 0 disables it.
     rate_limit_per_minute: int = 20
 
@@ -76,6 +83,22 @@ class Settings(BaseSettings):
         """Origins for CORS, defaulting to the local dashboard when unset."""
         origins = [o.strip() for o in self.cors_origins.split(",") if o.strip()]
         return origins or ["http://localhost:3000", "http://127.0.0.1:3000"]
+
+    @property
+    def allowed_origin_regex(self) -> str:
+        """Local development, the production dashboard, and this project's own previews.
+
+        The production alias is fixed here rather than left to CORS_ORIGINS: it was only
+        ever admitted by the old *.vercel.app wildcard, so a deployment whose environment
+        did not also list it would have locked its own dashboard out on the first deploy.
+        """
+        allowed = (
+            r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$|^https://footy-vision-tau\.vercel\.app$"
+        )
+        scope = re.escape(self.cors_preview_scope.strip())
+        if not scope:
+            return allowed
+        return allowed + rf"|^https://footy-vision-[a-z0-9-]+-{scope}\.vercel\.app$"
 
     @property
     def sqlalchemy_url(self) -> str:

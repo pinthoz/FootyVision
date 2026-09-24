@@ -36,16 +36,26 @@ dependencies = [
     "rich>=13.7",
     # LLM (OpenAI-compatible HTTP client for local LM Studio / Ollama / Cloud)
     "httpx>=0.27",
-    # ML: similarity, Performance Score, XGBoost position classifier + SHAP
-    "scikit-learn>=1.5",
-    "xgboost>=2.0",
-    "shap>=0.45",
-    # Value predictor: LightGBM regression + fuzzy name matching to FIFA/market values
-    "lightgbm>=4.0",
-    "rapidfuzz>=3.0",
+    # Similarity, radars and the Performance Score are numpy/pandas only. The trained
+    # models are *not* a runtime dependency: see the `train` extra below.
 ]
 
 [project.optional-dependencies]
+# Everything that fits a model: the position classifiers, the team Poisson ratings, the
+# value regressor, SHAP. The API serves their outputs from models/ and imports none of
+# them -- importing them cost 76MB and loading the fitted models another 175MB, which is
+# what had the 512MB deployment restarted. Keeping them out of the runtime install is also
+# what makes production fail safe: a stale artifact cannot trigger an in-process refit
+# there, because the libraries to refit with are not installed.
+#
+#   pip install -e ".[train]"   then   footyvision precompute / value-report
+train = [
+    "scikit-learn>=1.5",
+    "xgboost>=2.0",
+    "shap>=0.45",
+    "lightgbm>=4.0",
+    "rapidfuzz>=3.0",
+]
 etl = [
     # Scraping / Extraction dependencies: not needed in API production runtime
     "statsbombpy>=1.13",
@@ -56,6 +66,7 @@ ml = [
     "umap-learn>=0.5",
 ]
 dev = [
+    "footyvision[train]",
     "pytest>=8.2",
     "httpx>=0.27",
     "ruff>=0.5",
