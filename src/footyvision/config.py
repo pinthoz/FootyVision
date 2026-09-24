@@ -103,7 +103,7 @@ class Settings(BaseSettings):
     @property
     def sqlalchemy_url(self) -> str:
         if self.database_url:
-            return self.database_url
+            return _with_psycopg2(self.database_url)
         return (
             f"postgresql+psycopg2://{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
@@ -113,3 +113,21 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+def _with_psycopg2(url: str) -> str:
+    """Name the PostgreSQL driver in the URL rather than leaving it to SQLAlchemy.
+
+    A bare `postgresql://` URL means whatever driver the installed SQLAlchemy defaults to,
+    and that changed underneath this project: 2.0 picked psycopg2, 2.1 picks psycopg 3.
+    Render installs the newest release on every build, so a deploy that changed nothing
+    about the database failed at startup with "No module named 'psycopg'" — psycopg2 is
+    the driver this package depends on. Hosted providers also hand out the older
+    `postgres://` scheme, which SQLAlchemy has not accepted since 1.4.
+
+    Any URL that already names a driver, or is not PostgreSQL, is left alone.
+    """
+    for scheme in ("postgresql://", "postgres://"):
+        if url.startswith(scheme):
+            return "postgresql+psycopg2://" + url[len(scheme) :]
+    return url
