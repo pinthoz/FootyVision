@@ -35,8 +35,8 @@ export type Score = {
   predicted_role: string | null;
   role_confidence: number | null;
   role_profile: Record<string, number>;
-  /** The 23-class prediction, and the model's three best guesses at it. */
-  predicted_position?: string | null;
+  /** The exact-position model's three best guesses, and deliberately not its first: its
+      top pick is right 47% of the time and 42% of its misses are left/right swaps. */
   position_shortlist?: string[];
 };
 
@@ -59,17 +59,27 @@ export type ModelInfoResponse = {
   task: string;
   classes: string[];
   test_accuracy: number;
+  balanced_accuracy?: number | null;
+  per_class_recall?: Record<string, number>;
   n_train: number;
   n_test: number;
   features?: string[];
   top_features?: TopFeature[];
   role_model: PositionModel | null;
   exact_model?: PositionModel | null;
+  /** When the served predictions were computed, and whether the pool has changed since. */
+  predictions_built_on?: string | null;
+  predictions_stale?: boolean;
 };
 
 export type PositionModel = {
   classes: string[];
   test_accuracy: number;
+  /** Mean recall over classes, each counting equally. Accuracy counts players, so the
+      crowded classes decide it; these targets run to 116:1 and the two come apart. */
+  balanced_accuracy?: number | null;
+  /** Per class. The only field that reveals one the model never predicts at all. */
+  per_class_recall?: Record<string, number>;
   n_train: number;
   n_test: number;
   /** Only reported where a single-label score understates the model: 23 exact positions. */
@@ -107,6 +117,13 @@ export type AssistantResult = {
   answer: string;
   sources: { player_id: number; name: string; score?: number }[];
   filters?: string | null;
+  /** Players a filter removed for want of the attribute, counted per requirement. */
+  not_considered?: Record<string, number> | null;
+  /** The metric the sources are ordered by, when the question asked who leads in one. */
+  ranked_by?: string | null;
+  /** The model ran out of tokens. The text is trimmed to its last full sentence, but
+      it is a partial reply and saying so is the whole point of the flag. */
+  truncated?: boolean;
 };
 
 async function get<T>(path: string): Promise<T> {
@@ -115,7 +132,7 @@ async function get<T>(path: string): Promise<T> {
   return res.json();
 }
 
-async function post<T>(path: string, body: unknown): Promise<Response> {
+async function post(path: string, body: unknown): Promise<Response> {
   return fetch(`${API_BASE}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

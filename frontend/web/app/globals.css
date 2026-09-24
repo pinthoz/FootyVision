@@ -4026,3 +4026,17 @@ table td,
 .eval-questions > summary:hover {
   color: var(--text);
 }
+
+
+/* What the search could not check, stated by the page rather than by the model. Set apart
+   from the answer because it is a fact about the query, not about any player. */
+.ai-omitted {
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-left: 2px solid rgba(184, 142, 45, 0.45);
+  background: rgba(184, 142, 45, 0.05);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--muted);
+}

@@ -11,23 +11,34 @@ import { RADAR_AXES, api } from "../lib/api";
 
 type Row = { id: string; name: string; x: number; y: number };
 type Marker = { playerId: number; name: string; color: string };
+/** A selected player this chart cannot show, and the group they belong to instead. */
+type Omitted = { name: string; group: string };
 
 export default function MetricScatter({
   positionGroup,
   markers,
+  omitted,
 }: {
   positionGroup: string;
   markers: Marker[];
+  omitted?: Omitted | null;
 }) {
   const [xMetric, setXMetric] = useState("shots_per90");
   const [yMetric, setYMetric] = useState("xg_per90");
-  const [rows, setRows] = useState<Row[] | null>(null);
-  const [failed, setFailed] = useState(false);
+  // Each response is kept with the request it answered, so switching axes shows "loading"
+  // by mismatch rather than by clearing state at the top of the effect.
+  const request = `${xMetric}|${yMetric}|${positionGroup}`;
+  const [result, setResult] = useState<{
+    request: string;
+    rows: Row[] | null;
+    failed: boolean;
+  } | null>(null);
+  const current = result?.request === request ? result : null;
+  const rows = current?.rows ?? null;
+  const failed = current?.failed ?? false;
 
   useEffect(() => {
     let stale = false;
-    setRows(null);
-    setFailed(false);
     Promise.all([
       api.distribution(xMetric, positionGroup),
       api.distribution(yMetric, positionGroup),
@@ -37,8 +48,10 @@ export default function MetricScatter({
         // Joined on the player-season, not the player: eleven players hold one row in
         // each of two leagues, and joining on the player id silently merges them.
         const yById = new Map(ys.values.map((v) => [v.id, v.value]));
-        setRows(
-          xs.values
+        setResult({
+          request,
+          failed: false,
+          rows: xs.values
             .filter((v) => yById.has(v.id))
             .map((v) => ({
               id: v.id,
@@ -47,14 +60,14 @@ export default function MetricScatter({
               name: v.name,
               x: v.value,
               y: yById.get(v.id) as number,
-            }))
-        );
+            })),
+        });
       })
-      .catch(() => !stale && setFailed(true));
+      .catch(() => !stale && setResult({ request, rows: null, failed: true }));
     return () => {
       stale = true;
     };
-  }, [xMetric, yMetric, positionGroup]);
+  }, [request, xMetric, yMetric, positionGroup]);
 
   const labelOf = (metric: string) => RADAR_AXES.find(([key]) => key === metric)?.[1] ?? metric;
 
@@ -95,6 +108,16 @@ export default function MetricScatter({
       </label>
 
       {failed && <div className="chartnote">Could not load the metrics.</div>}
+
+      {/* Not an error. A percentile is a rank within a position group, so a forward has no
+          place on a field of midfielders — but a marker that simply never appears reads as
+          a broken chart, which is how this was reported. */}
+      {omitted && (
+        <div className="chartnote">
+          {omitted.name} is not plotted here — this field is {positionGroup}s only, and{" "}
+          {omitted.group}s are ranked against their own.
+        </div>
+      )}
 
       <div className="scatter-layout">
         <div className="axis-pickers">

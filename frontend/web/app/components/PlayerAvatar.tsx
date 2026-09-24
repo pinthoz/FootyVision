@@ -16,29 +16,20 @@ export default function PlayerAvatar({
   themeColor = "var(--a)",
   className = "",
 }: PlayerAvatarProps) {
-  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  // Each lookup is stored with the name it was for, and "loading" is simply the absence of
+  // one for the current name. Resetting state at the top of the effect did the same job
+  // with an extra render per name change.
+  const [photo, setPhoto] = useState<{ name: string; url: string | null } | null>(null);
+  const [brokenFor, setBrokenFor] = useState<string | null>(null);
+  const loading = photo?.name !== name;
+  const photoUrl = loading ? null : photo.url;
+  const error = brokenFor === name;
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
-    setError(false);
-
     resolvePlayerPhoto(name)
-      .then((url) => {
-        if (active) {
-          setPhotoUrl(url);
-          setLoading(false);
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setPhotoUrl(null);
-          setLoading(false);
-        }
-      });
-
+      .then((url) => active && setPhoto({ name, url }))
+      .catch(() => active && setPhoto({ name, url: null }));
     return () => {
       active = false;
     };
@@ -55,7 +46,7 @@ export default function PlayerAvatar({
           src={photoUrl}
           alt={name}
           className="player-avatar-img"
-          onError={() => setError(true)}
+          onError={() => setBrokenFor(name)}
           loading="lazy"
         />
         <div className="avatar-ring" style={{ borderColor: themeColor }} />
