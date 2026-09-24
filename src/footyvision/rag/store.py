@@ -84,6 +84,10 @@ class VectorStore:
         self.age = np.asarray(attrs.get("age", [np.nan] * n), dtype=np.float32)
         self.position_group = np.asarray(attrs.get("position_group", [None] * n), dtype=object)
         self.nationality = np.asarray(attrs.get("nationality", [None] * n), dtype=object)
+        # Not stored with the vectors: it is derived from each player's primary position
+        # when the index is loaded (see `rag.service.attach_roles`), so adding it needed
+        # neither a migration nor re-embedding 2,562 profiles.
+        self.position_role = np.asarray(attrs.get("position_role", [None] * n), dtype=object)
         # Per-90 values per row, as plain dicts. Not a numpy matrix: an index built
         # before these existed has none, and a ragged column of Nones is exactly the
         # "this dimension is unknown" case the filters already handle.
@@ -192,6 +196,8 @@ class VectorStore:
             mask &= self.foot == constraints.foot
         if constraints.position_group is not None and self._knows(self.position_group):
             mask &= self.position_group == constraints.position_group
+        if constraints.position_role is not None and self._knows(self.position_role):
+            mask &= self.position_role == constraints.position_role
         if constraints.nationality is not None and self._knows(self.nationality):
             mask &= self.nationality == constraints.nationality
         if self._knows(self.age):
@@ -230,6 +236,20 @@ class VectorStore:
             if parts:
                 notes.append(f"{hit.name}: {', '.join(parts)}.")
         return notes
+
+    def ranked_by(self, hits: list[Hit], column: str) -> list[Hit]:
+        """The same players, highest per-90 value of `column` first.
+
+        A player with no recorded value sorts last rather than being dropped: the question
+        still deserves six names, and an unknown is not a zero.
+        """
+
+        def value(hit: Hit) -> float:
+            values = self.metrics[hit.row] if 0 <= hit.row < len(self.metrics) else None
+            v = (values or {}).get(column)
+            return float(v) if v is not None else float("-inf")
+
+        return sorted(hits, key=value, reverse=True)
 
     def unknown_dropped(self, constraints: Constraints) -> dict[str, int]:
         """How many players each constraint excluded for want of the attribute, not for

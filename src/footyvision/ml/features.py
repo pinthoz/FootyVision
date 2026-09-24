@@ -91,6 +91,36 @@ def position_role(position: str | None) -> str:
     return "Unknown"
 
 
+# Feature frames, keyed by the arguments that produced them. Every request that scores,
+# ranks, compares or plots a player rebuilt this from the database, and each copy is about
+# 16MB: twenty-four concurrent requests peaked at 504MB against Render's 512MB ceiling,
+# which is the out-of-memory restart. The pool only changes when a season is imported, so
+# the rebuild bought nothing — and, like the model caches, it means the API must be
+# restarted after an import.
+_FRAME_CACHE: dict[tuple, pd.DataFrame] = {}
+# Callers pass a min_minutes query parameter, so the key space is caller-controlled and
+# has to be bounded; a handful of distinct pools is far more than anything real uses.
+_FRAME_CACHE_MAX = 8
+
+
+def cached_feature_frame(session: Session, **kwargs) -> pd.DataFrame:
+    """`load_feature_frame`, built once per distinct set of arguments.
+
+    Returns a shallow copy: the columns can be added to or reassigned by a caller without
+    reaching the cached original, while the underlying arrays stay shared, so the copy
+    costs almost nothing. Callers that mutate values in place still need their own deep
+    copy, which is what the model training code already takes.
+    """
+    key = tuple(sorted(kwargs.items()))
+    frame = _FRAME_CACHE.get(key)
+    if frame is None:
+        if len(_FRAME_CACHE) >= _FRAME_CACHE_MAX:
+            _FRAME_CACHE.clear()
+        frame = load_feature_frame(session, **kwargs)
+        _FRAME_CACHE[key] = frame
+    return frame.copy(deep=False)
+
+
 def load_feature_frame(
     session: Session,
     min_minutes: float | None = None,

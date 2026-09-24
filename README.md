@@ -35,11 +35,12 @@ numbers.
 | **Similarity engine** | Per-90 features, z-scored **within position group**, cosine similarity | `GET /players/{id}/similar` |
 | **Scouting radars** | Percentile-vs-peers on each metric | `GET /players/{id}/radar` |
 | **Performance Score** | Transparent position-weighted percentile composite (0–100) | `GET /players/{id}/score`, `GET /rankings` |
-| **Role classifier** | XGBoost predicts position from style (~85%), **SHAP** explains, flags role-mismatches | `footyvision talent-report` |
+| **Position classifiers** | XGBoost from style alone: 4 groups (91% accuracy, 92% balanced), 10 roles (75% / 60%), and the exact position as a three-name shortlist (right 78% of the time). Per-class recall is published, because accuracy hides that *Wing Back* is never predicted | `GET /talent/model-info` |
 | **LLM scouting reports** | Report grounded in computed stats; the model can't invent numbers | `POST /players/{id}/report` |
 | **Natural-language search** | LLM → validated Pydantic `PlayerQuery` (never raw SQL) → safe query | `POST /search` |
-| **Market value model** | LightGBM + age + SHAP on real Transfermarkt values | `footyvision value-report` |
-| **RAG assistant** | Player profiles embedded locally → retrieve + grounded answer, cites names | `POST /assistant` |
+| **Market value range** | LightGBM on Transfermarkt 2015/16 values, served as a 5th–95th band with the share of held-out players it actually caught (72%) and the error of predicting the median for everyone | `GET /players/{id}/value`, `GET /value/bargains` |
+| **Team strength** | Poisson attack/defence ratings per side, fitted per competition | `GET /teams/strength` |
+| **RAG assistant** | Player profiles embedded locally → retrieve + grounded answer, cites names. Hard filters (foot, age, nationality, role) apply before ranking, and "who makes the most X" returns the actual top of the filtered pool by X — the true leader in 42 of 42 bank questions, against 12 by similarity alone ([`eval_metric_leaders.py`](scripts/eval_metric_leaders.py)) | `POST /assistant` |
 
 **Example** — *"La Liga forwards with xG per 90 over 0.5"* → Ronaldo, Benzema, Suárez, Messi.
 *"médio defensivo que ganhe bolas e intercete"* → retrieves Busquets/Camacho and recommends
@@ -94,7 +95,10 @@ pip install -e ".[dev]"
 # 4. Schema + data (StatsBomb Open Data)
 footyvision init-db
 footyvision competitions              # list available competitions
-footyvision load -c 11 -s 27          # La Liga 2015/16 (the one full season; ~380 matches)
+footyvision load -c 11 -s 27          # La Liga 2015/16 (~380 matches); repeat per season
+
+# 4b. Model outputs the API serves (needs the `train` extra, included in `dev`)
+footyvision precompute                # position profiles, shortlists, team ratings
 
 # 5. API
 uvicorn footyvision.api.main:app --reload    # -> http://localhost:8000/docs
@@ -108,7 +112,8 @@ footyvision index                     # embed player profiles into the RAG vecto
 ```
 
 **Value model** (optional): needs Kaggle access to `davidcariboo/player-scores`; drop
-`players.csv` + `player_valuations.csv` into `data/`, then `footyvision value-report`.
+`players.csv` + `player_valuations.csv` into `data/`, then `footyvision value-report`, which
+writes `models/value/value_model.joblib` for the API to serve.
 
 **Everything at once:**
 
@@ -118,10 +123,16 @@ footyvision index                     # embed player profiles into the RAG vecto
 
 ## API reference
 
-`/health` · `/llm/health` · `/players` · `/players/{id}` · `/players/{id}/seasons` ·
-`/players/{id}/similar` · `/players/{id}/radar` · `/players/{id}/score` · `/rankings` ·
-`/talent/model-info` · `POST /players/{id}/report` · `/players/{id}/report/context` ·
-`POST /search` · `POST /search/structured` · `POST /assistant`.
+**Players** `/players` · `/players/{id}` · `/players/{id}/seasons` · `/players/{id}/similar` ·
+`/players/{id}/radar` · `/players/{id}/score` · `/players/{id}/value` · `/rankings` ·
+`/metrics/{metric}/distribution`
+**Models** `/talent/model-info` · `/value/model-info` · `/value/bargains` · `/teams/strength`
+**Language** `POST /search` · `POST /search/structured` · `POST /assistant` ·
+`POST /players/{id}/report` · `/players/{id}/report/context`
+**Provenance** `/coverage` · `/eval/assistant` · `/health` · `/llm/health`
+
+The three endpoints that call an LLM are rate-limited per client and reject questions over
+500 characters or assistants asked for more than 12 players.
 Interactive OpenAPI docs at `/docs`.
 
 ## Repository layout
@@ -136,11 +147,11 @@ src/footyvision/       # the Python package
   search/              #   query.py (safe PlayerQuery), nl.py (NL → query)
   rag/                 #   profiles, store, assistant, service
   api/                 #   main.py, routers/, schemas.py
-  cli.py               #   init-db · load · aggregate · talent-report · value-report · index
+  cli.py               #   init-db · load · aggregate · enrich · precompute · value-report · index
 frontend/              # radar_demo.html · web/ (Next.js dashboard)
 migrations/            # Alembic
 scripts/               # start.ps1 · eval_embeddings.py (retrieval benchmark)
-tests/                 # 52 tests (unit + API), DB/network/LLM-free
+tests/                 # 190 tests (unit + API), DB/network/LLM-free
 docs/                  # ARCHITECTURE.md, ROADMAP.md
 ```
 
@@ -148,28 +159,47 @@ docs/                  # ARCHITECTURE.md, ROADMAP.md
 
 This project deliberately reports what public/free data **can't** do, not just what it can:
 
-- **StatsBomb Open Data** has no Portuguese league and only **one** complete domestic season
-  (La Liga 2015/16) — so the pool is that season plus a partial Bundesliga.
+- **StatsBomb Open Data** has no Portuguese league. The pool is 2,562 player-seasons from
+  2,322 matches across 10 competitions: the five big men's leagues in 2015/16 and five
+  women's leagues in 2023/24. Date of birth and preferred foot exist only for the men, and
+  every age or foot filter says how many players it could not check.
 - **FBref** only exposes advanced stats (xG, progression) for the Big-5 leagues, so a rich
   Primeira Liga engine isn't feasible from free sources.
 - The **embedding model was chosen by measurement, not by leaderboard**
   ([`scripts/eval_embeddings.py`](scripts/eval_embeddings.py) scores retrieval on these 411
   profiles). The original setup — nomic-embed-text with no task prefixes — retrieved the
   right position for only **30% of Portuguese queries** against 90% of English ones.
-  EmbeddingGemma-300M with its proper prefixes reaches **73% / 97%**. A cross-lingual gap
-  remains, and the script reports it rather than hiding it.
-- The **value model** is trained on real Transfermarkt values but scores a low held-out
-  R² (≈0.05): one season of public per-90 stats plus age barely predicts market value (SHAP
-  correctly ranks age #1). Cross-source name matching (Spanish multi-surnames ↔ short TM
-  names) adds label noise. A truthful evaluation beats an inflated one.
+  EmbeddingGemma-300M with its proper prefixes reaches **73% / 97%** (measured when the
+  pool was La Liga alone). A cross-lingual gap remains, and the script reports it.
+- The **value model** explains R² 0.43 of log(value) but only **0.22 in euros**, and its
+  MAE (€4.29M) beats predicting the median for everyone (€5.11M) by about €0.8M. It is
+  served as a range for that reason. A quarter of its labels used to be somebody else's:
+  fuzzy matching gave Casemiro "Henrique"'s value and 76 women the values of men with
+  similar names, until matching moved from string similarity to shared name tokens.
+- The **RAGAS evaluation** (241 questions, one local judge) scores faithfulness 0.82 and
+  context precision 0.35. The low precision is concentrated where a question asks for a
+  shortlist and the answer then picks one of the six players retrieved — the metric
+  penalises exactly the comparison pool a scout wants.
 
 ## Development
 
 ```bash
-pytest                             # 52 tests, no Postgres/network/LLM required
-ruff check src tests
+pytest                             # 190 tests, no Postgres/network/LLM required
+ruff check src tests scripts
 ruff format --check src tests
 ```
+
+### Deployment memory
+
+The API imports no machine-learning library. It serves the classifiers', team model's and
+value model's outputs from `models/talent/predictions.json` and
+`models/value/value_model.joblib`, which is what fits it in a 512MB instance: 152MB warm and
+264MB at peak across 24 concurrent requests, against 505MB when it loaded the models itself.
+Production installs without the `train` extra, so it cannot refit by accident.
+
+**After importing a season, run `footyvision precompute` (and `value-report`) and commit the
+artifacts.** Until then the API serves the previous predictions and reports
+`predictions_stale: true` in `/talent/model-info`.
 
 CI runs the same checks on Python 3.11 and 3.12, plus a production build of the dashboard.
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the ground rules (tests stay offline, the LLM

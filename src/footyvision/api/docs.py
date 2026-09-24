@@ -30,8 +30,10 @@ SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ),
     (
         "Models",
-        "Performance score, the three position classifiers, and team attack/defence.",
-        ("talent", "teams"),
+        "Performance score, the position classifiers, team attack/defence, and market "
+        "value — the last one a range rather than a price, and reported with what it is "
+        "worth against a do-nothing baseline.",
+        ("talent", "teams", "value"),
     ),
     (
         "Search & language",

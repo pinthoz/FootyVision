@@ -162,10 +162,39 @@ def generate(
             }
         )
         save(rows, cache)
-        print(f"  [{i}/{len(todo)}] {question.text[:56]:58s} "
-              f"{len(result['contexts'])} contexts", flush=True)
+        print(
+            f"  [{i}/{len(todo)}] {question.text[:56]:58s} {len(result['contexts'])} contexts",
+            flush=True,
+        )
         time.sleep(pause)
     return rows
+
+
+def judge_name(model: str | None, base_url: str | None = None) -> str:
+    """The model that will actually grade, resolved the same way `_judge` resolves it.
+
+    This existed in two places and they disagreed. `_judge` falls back to the *local*
+    model setting when a base URL is given; the provenance fields fell back to the *cloud*
+    one, so a run graded on LM Studio was published as having been graded by Gemini —
+    which is precisely the confusion `judged_by` was added to prevent.
+
+    With a local endpoint the requested name is not the last word either: the server
+    serves whatever it has loaded, whatever it was asked for. So it is asked.
+    """
+    settings = get_settings()
+    if not base_url:
+        return model or settings.cloud_llm_model
+    try:
+        import httpx
+
+        loaded = httpx.get(f"{base_url}/models", timeout=5).json().get("data", [])
+        # Only when it is unambiguous. Several loaded models mean the name in the request
+        # decides, and guessing between them would be the same mistake in a new place.
+        if len(loaded) == 1 and loaded[0].get("id"):
+            return str(loaded[0]["id"])
+    except Exception:
+        pass
+    return model or settings.llm_model
 
 
 def _judge(model: str | None, base_url: str | None = None):
@@ -244,7 +273,10 @@ def contexts_for(row: dict) -> list[str]:
 
 
 def score(
-    rows: list[dict], pause: float, cache: Path, model: str | None,
+    rows: list[dict],
+    pause: float,
+    cache: Path,
+    model: str | None,
     base_url: str | None = None,
 ) -> dict[str, list[float]]:
     """Score every cached answer that has not been scored yet, saving as it goes."""
@@ -255,6 +287,9 @@ def score(
     )
 
     llm, embeddings = _judge(model, base_url)
+    # Resolved once, from the same place `_judge` resolves it, so the label on every row
+    # names the thing that graded it.
+    judge = judge_name(model, base_url)
     metrics = {
         "faithfulness": Faithfulness(llm=llm),
         "context_precision": ContextPrecisionWithoutReference(llm=llm),
@@ -283,7 +318,7 @@ def score(
         # Which judge produced them. A run interrupted by a daily quota gets finished by a
         # different model, and the snapshot's single `judge_model` would then describe only
         # the last one — quietly presenting a mixed panel as one grader.
-        row["judged_by"] = model or get_settings().cloud_llm_model
+        row["judged_by"] = judge
         save(rows, cache)
         line = "  ".join(f"{n.split('_')[0]} {v:.2f}" for n, v in values.items())
         print(f"  [{i}/{len(pending)}] {row['kind']:20s} {line}", flush=True)
@@ -423,12 +458,8 @@ def main() -> None:
     # is twenty requests -- less than one run of this script. Overriding the model is
     # how you get a fresh allowance without touching what production is configured to
     # use, and pointing both at a local endpoint removes the ceiling entirely.
-    parser.add_argument(
-        "--answer-model", default=None, help="Model that writes the answers."
-    )
-    parser.add_argument(
-        "--judge-model", default=None, help="Model that scores them."
-    )
+    parser.add_argument("--answer-model", default=None, help="Model that writes the answers.")
+    parser.add_argument("--judge-model", default=None, help="Model that scores them.")
     parser.add_argument(
         "--judge-base-url",
         default=None,
@@ -477,7 +508,7 @@ def main() -> None:
     write_snapshot(
         rows,
         args.snapshot,
-        judge=args.judge_model or get_settings().cloud_llm_model,
+        judge=judge_name(args.judge_model, args.judge_base_url),
         answerer=args.answer_model or get_settings().cloud_llm_model,
     )
 

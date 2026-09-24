@@ -17,6 +17,7 @@ from footyvision.api.routers import (
     similarity,
     talent,
     teams,
+    value,
 )
 from footyvision.config import get_settings
 
@@ -35,8 +36,9 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_settings().allowed_origins,
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$|^https://.*\.vercel\.app$",
-    allow_credentials=True,
+    allow_origin_regex=get_settings().allowed_origin_regex,
+    # The dashboard sends no cookies and no auth headers, so there is nothing to share.
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -52,6 +54,7 @@ app.include_router(metrics.router)
 app.include_router(assistant.router)
 app.include_router(evaluation.router)
 app.include_router(teams.router)
+app.include_router(value.router)
 
 # After the routers, because the page is built from the schema they define.
 docs.install(app)

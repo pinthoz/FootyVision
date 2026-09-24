@@ -9,7 +9,7 @@ more than average and a *negative* defence concedes less.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from footyvision.api.schemas import TeamStrengthOut, TeamStrengthResponse
@@ -74,8 +74,22 @@ def strength(
 
 
 def _fit(session: Session, competition_id: int | None) -> TeamStrengthResponse:
-    """Fit the Poisson model in-process, for a working copy with no published ratings."""
-    from footyvision.ml.matches import load_matches, team_strengths
+    """Fit the Poisson model in-process, for a working copy with no published ratings.
+
+    Only possible where the `train` extra is installed. A deployment does not have it,
+    by design, and says so rather than failing inside the import.
+    """
+    try:
+        from footyvision.ml.matches import load_matches, team_strengths
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "No published team ratings for this database, and the training libraries "
+                "are not installed here. Run `footyvision precompute` where they are and "
+                "deploy models/talent/predictions.json."
+            ),
+        ) from exc
 
     matches = load_matches(session)
     if competition_id is not None:

@@ -74,9 +74,9 @@ def build(frame: pd.DataFrame, top_n_shortlist: int = 3) -> dict[str, Any]:
         # Only the shortlist is kept from the exact model. Its single best guess is not
         # published — right 47% of the time, and 42% of its misses are left/right swaps —
         # so the other eighteen probabilities have no reader and would triple this file.
-        shortlist = [
-            name for name, _ in sorted(exact_probs[i].items(), key=lambda kv: -kv[1])
-        ][:top_n_shortlist]
+        shortlist = [name for name, _ in sorted(exact_probs[i].items(), key=lambda kv: -kv[1])][
+            :top_n_shortlist
+        ]
         players[pid] = {
             "group": group_probs[i],
             "role": role_probs[i],
@@ -89,8 +89,10 @@ def build(frame: pd.DataFrame, top_n_shortlist: int = 3) -> dict[str, Any]:
         # was loaded and these answers describe a database that no longer exists.
         "pool": int(len(frame)),
         "top_features": get_cached_importance(group, frame),
-        "models": {name: _model_meta(model) for name, model in
-                   zip(TARGETS, (group, role, exact), strict=True)},
+        "models": {
+            name: _model_meta(model)
+            for name, model in zip(TARGETS, (group, role, exact), strict=True)
+        },
         "players": players,
     }
 

@@ -35,7 +35,12 @@ router = APIRouter(tags=["value"])
 # This is not just a speed cache. The training labels come from two Kaggle CSVs totalling
 # 47MB that are gitignored and therefore absent from every deployment, so in production
 # this artifact is the only way these endpoints can answer at all.
-ARTIFACT = Path(__file__).resolve().parents[3] / "models" / "value" / "value_model.joblib"
+# parents[4], not [3]: this file sits three directories below the package root
+# (footyvision/api/routers/), where ml/precompute.py sits one. Counting from the wrong
+# file wrote the artifact to src/models/ and left the committed one at models/value/
+# untouched — still holding a pickled LGBMRegressor, so production would have imported
+# lightgbm to read a handful of scalars, which is the whole cost this was meant to avoid.
+ARTIFACT = Path(__file__).resolve().parents[4] / "models" / "value" / "value_model.joblib"
 
 # Training walks the feature frame, fuzzy-matches five thousand names and fits three
 # LightGBM models — several seconds, far too slow per request and static between imports.
@@ -98,14 +103,16 @@ def _fitted(session: Session):
     if "model" not in _CACHE:
         try:
             _CACHE["model"], _CACHE["priced"] = _train(session)
-        except FileNotFoundError as exc:
+        # Missing labels or a missing training stack: in a deployment it is normally both,
+        # and either way the fix is the same artifact, written somewhere that has them.
+        except (FileNotFoundError, ImportError) as exc:
             raise HTTPException(
                 status_code=503,
                 detail=(
-                    "The value model is unavailable: its training labels are two Kaggle "
-                    "CSVs that are not part of the repository, and no pre-fitted artifact "
-                    "was deployed. Run `footyvision value-report` where the data is "
-                    "present to write one."
+                    "The value model is unavailable: no pre-fitted artifact was deployed, "
+                    "and fitting one needs two Kaggle CSVs that are not in the repository "
+                    "and the `train` extra. Run `footyvision value-report` where both are "
+                    "present and deploy models/value/value_model.joblib."
                 ),
             ) from exc
     return _CACHE["model"], _CACHE["priced"]

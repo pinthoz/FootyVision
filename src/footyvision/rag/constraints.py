@@ -41,6 +41,11 @@ class Constraints:
     # Stored as the country name exactly as the index spells it, so it can be compared
     # without normalising on every query.
     nationality: str | None = None
+    # The side-agnostic role (`ml.features.position_role`), when the question names one
+    # precisely: "wing-backs", not "defenders". The four groups are too coarse for a
+    # leaders question — the full-backs who make the most carries are not the centre-backs
+    # who do, and both are DEF.
+    position_role: str | None = None
 
     def __bool__(self) -> bool:
         return any(
@@ -51,6 +56,7 @@ class Constraints:
                 self.max_age,
                 self.min_age,
                 self.nationality,
+                self.position_role,
             )
         )
 
@@ -59,7 +65,9 @@ class Constraints:
         parts = []
         if self.foot:
             parts.append("two-footed" if self.foot == "both" else f"{self.foot}-footed")
-        if self.position_group:
+        if self.position_role:
+            parts.append(self.position_role.lower() + "s")
+        elif self.position_group:
             parts.append(self.position_group)
         if self.nationality:
             parts.append(f"from {self.nationality}")
@@ -118,6 +126,46 @@ _POSITION_PATTERNS = (
         ),
         "FWD",
     ),
+)
+
+# Roles, for questions that name one precisely. Each carries its group so the two filters
+# can never disagree. Checked against the group patterns by position in the sentence: the
+# role only applies when a role phrase is the first position word, so "a midfielder who
+# plays as a winger" stays a midfielder, and "medio ala" stays a midfielder too. Compound
+# phrases ("defesas centrais") start where their generic word does, which is what lets
+# them win against it.
+_ROLE_PATTERNS = (
+    (
+        re.compile(r"\b(goalkeeper|keeper|goalie|guarda[\s-]?redes|guardiao|goleiro)s?\b"),
+        "Goalkeeper",
+        "GK",
+    ),
+    (re.compile(r"\b(wing[\s-]?backs?|alas?)\b"), "Wing Back", "DEF"),
+    (re.compile(r"\b(full[\s-]?backs?|latera(?:l|is))\b"), "Full Back", "DEF"),
+    (
+        re.compile(r"\b(cent(?:re|er)[\s-]?backs?|defesas? centra(?:l|is)|centra(?:l|is))\b"),
+        "Centre Back",
+        "DEF",
+    ),
+    (
+        re.compile(
+            r"\b(defensive midfield(?:er)?s?|holding midfield(?:er)?s?|trincos?|"
+            r"medios? defensivos?|volantes?)\b"
+        ),
+        "Defensive Midfield",
+        "MID",
+    ),
+    (
+        re.compile(r"\b(attacking midfield(?:er)?s?|playmakers?|medios? ofensivos?|meias?)\b"),
+        "Attacking Midfield",
+        "MID",
+    ),
+    (
+        re.compile(r"\b(cent(?:re|er)[\s-]?forwards?|strikers?|pontas? de lanca)\b"),
+        "Centre Forward",
+        "FWD",
+    ),
+    (re.compile(r"\b(wingers?|extremos?)\b"), "Winger", "FWD"),
 )
 
 _UNDER = re.compile(
@@ -250,6 +298,18 @@ def parse_constraints(question: str, countries: Iterable[str] | None = None) -> 
     ]
     position = min(found)[1] if found else None
 
+    roles = [
+        (match.start(), role, group)
+        for pattern, role, group in _ROLE_PATTERNS
+        if (match := pattern.search(text)) is not None
+    ]
+    role = None
+    if roles:
+        start, named_role, group = min(roles)
+        # Only when no generic position word comes earlier: that word is the subject.
+        if not found or start <= min(found)[0]:
+            role, position = named_role, group
+
     max_age: float | None = None
     min_age: float | None = None
     if (explicit := _UNDER.search(text)) is not None:
@@ -267,4 +327,5 @@ def parse_constraints(question: str, countries: Iterable[str] | None = None) -> 
         max_age=max_age,
         min_age=min_age,
         nationality=_nationality(text, countries),
+        position_role=role,
     )

@@ -17,6 +17,16 @@ from footyvision.llm import local_embedder
 logger = logging.getLogger(__name__)
 
 
+def _to_last_sentence(text: str) -> str:
+    """Cut back to the last finished sentence, so nothing ends mid-word.
+
+    Falls back to the text as it stands when there is no sentence break to retreat to —
+    a short reply that was cut early is better shown whole than reduced to nothing.
+    """
+    end = text.rstrip().rfind(".")
+    return text[: end + 1].strip() if end > 0 else text
+
+
 class LLMError(RuntimeError):
     """Raised when the LLM endpoint is unreachable or returns an error."""
 
@@ -130,8 +140,16 @@ class LLMClient:
         resp.raise_for_status()
         choice = resp.json()["choices"][0]
         msg = choice.get("message", {})
-        content = msg.get("content") or msg.get("reasoning_content") or ""
-        return content.strip()
+        content = (msg.get("content") or msg.get("reasoning_content") or "").strip()
+        # A model that ran out of budget stops wherever it happened to be, which is often
+        # mid-word, and this returned that as though it were an answer: readers saw
+        # "has a high xG (0.16 xG per" and had no way to know the model had not finished.
+        # A reasoning model makes it easy to hit — its thinking is billed against the same
+        # ceiling as its prose, so most of the budget can be gone before a word is written.
+        self.last_truncated = choice.get("finish_reason") == "length"
+        if self.last_truncated:
+            content = _to_last_sentence(content)
+        return content
 
     def chat(
         self,
@@ -144,7 +162,13 @@ class LLMClient:
 
         Tries local LLM first; if unreachable and cloud API key is configured,
         seamlessly falls back to the cloud LLM.
+
+        Sets `last_truncated` when the model stopped because it ran out of tokens rather
+        than because it had finished. Callers that show the text to somebody should read
+        it: what comes back in that case is a cut-off answer trimmed to its last complete
+        sentence, which is tidier than a severed word but still not the whole reply.
         """
+        self.last_truncated = False
         local_exc: Exception | None = None
         # Only try local if it is localhost or explicitly configured
         if self.base_url and ("localhost" in self.base_url or "127.0.0.1" in self.base_url):

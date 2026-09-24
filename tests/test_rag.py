@@ -243,15 +243,15 @@ def test_constraints_are_empty_for_a_question_that_states_none():
     ("question", "expected"),
     [
         # The pair that exposed the gap: one was filtered, the other was not.
-        ("a left-footed winger", "left-footed, FWD"),
-        ("um extremo canhoto", "left-footed, FWD"),
+        ("a left-footed winger", "left-footed, wingers"),
+        ("um extremo canhoto", "left-footed, wingers"),
         # Portuguese inflects the adjective, which a bare `s?` on an English stem misses.
         ("avancados ambidestros", "two-footed, FWD"),
         # ...and pluralises "-al" as "-ais", which it cannot build at all.
-        ("laterais destros", "right-footed, DEF"),
-        ("defesas centrais", "DEF"),
-        ("guarda-redes experientes", "GK, aged 32 or over"),
-        ("ponta de lanca sub-21", "FWD, aged 21 or under"),
+        ("laterais destros", "right-footed, full backs"),
+        ("defesas centrais", "centre backs"),
+        ("guarda-redes experientes", "goalkeepers, aged 32 or over"),
+        ("ponta de lanca sub-21", "centre forwards, aged 21 or under"),
         ("medios com mais de 30 anos", "MID, aged 30 or over"),
         # "medio ala" is a midfielder: the first position word in the sentence wins, and
         # "ala" alone would otherwise be read as a wing-back.
@@ -277,7 +277,7 @@ def test_feminine_forms_are_read_too():
     from footyvision.rag.constraints import parse_constraints
 
     assert parse_constraints("avancadas canhotas").describe() == "left-footed, FWD"
-    assert parse_constraints("uma lateral destra").describe() == "right-footed, DEF"
+    assert parse_constraints("uma lateral destra").describe() == "right-footed, full backs"
     assert parse_constraints("jogadoras ambidestras").foot == "both"
 
 
@@ -301,16 +301,16 @@ _POOL = ["Spain", "Brazil", "Portugal", "Côte d'Ivoire", "Venezuela\xa0(Bolivar
 @pytest.mark.parametrize(
     ("question", "expected"),
     [
-        ("a Brazilian left-footed winger", "left-footed, FWD, from Brazil"),
-        ("um extremo brasileiro canhoto", "left-footed, FWD, from Brazil"),
+        ("a Brazilian left-footed winger", "left-footed, wingers, from Brazil"),
+        ("um extremo brasileiro canhoto", "left-footed, wingers, from Brazil"),
         # Feminine and plural, because half the pool is women's football.
         ("avancadas brasileiras", "FWD, from Brazil"),
-        ("uma lateral portuguesa", "DEF, from Portugal"),
+        ("uma lateral portuguesa", "full backs, from Portugal"),
         # "espanhol" pluralises irregularly, to "espanhóis".
         ("medios espanhois", "MID, from Spain"),
         # Stored with an accent; asked without one.
-        ("wingers from Ivory Coast", "FWD, from Côte d'Ivoire"),
-        ("extremos da costa do marfim", "FWD, from Côte d'Ivoire"),
+        ("wingers from Ivory Coast", "wingers, from Côte d'Ivoire"),
+        ("extremos da costa do marfim", "wingers, from Côte d'Ivoire"),
         # Stored with a parenthetical and a non-breaking space; asked as the plain name.
         ("players from Venezuela", "from Venezuela\xa0(Bolivarian Republic)"),
     ],
@@ -404,13 +404,20 @@ def test_metric_notes_supply_values_the_profile_prose_leaves_out():
     assert bare.metric_notes([Hit(1, "A", "a", 1.0, 0)], ["tackles_per90"]) == []
 
 
-def test_prompt_lists_the_asked_for_metric_apart_from_the_profiles():
+def test_the_asked_for_metric_travels_inside_its_own_player_context():
+    """One entry per player, carrying the number the question asked for.
+
+    Listing the values in a section of their own showed them to the model twice and made
+    the evaluation count twice as many contexts, half of them naming players no answer
+    mentions — which is most of why context precision read 0.22 on metric questions
+    against 0.38 everywhere else.
+    """
     from footyvision.rag.assistant import build_prompt
 
-    _, user = build_prompt("most tackles?", [], None, None, ["Anchor: tackles 3.41 per 90."])
+    _, user = build_prompt("most tackles?", ["Anchor is a MID. Asked about: tackles 3.41 per 90."])
 
-    assert "The metric asked about" in user
-    assert "Anchor: tackles 3.41 per 90." in user
+    assert user.count("Anchor") == 1
+    assert "tackles 3.41 per 90" in user
 
 
 def test_the_prompt_forbids_reading_the_shortlist_as_a_census():
@@ -663,3 +670,152 @@ def test_load_db_returns_none_when_nothing_is_stored(db_session):
     from footyvision.rag.store import VectorStore
 
     assert VectorStore.load_db(db_session) is None
+
+
+# --- Leaders questions ------------------------------------------------------------------
+
+
+def _leaders_store():
+    """Five players whose similarity order is the reverse of their carries.
+
+    The vectors put the *worst* carrier closest to any query, so a retrieval that ranks by
+    similarity alone returns them in exactly the wrong order — which is the failure these
+    tests exist to catch.
+    """
+    import numpy as np
+
+    from footyvision.rag.store import VectorStore
+
+    rows = [
+        # id, name, role, carries, similarity to the query
+        (1, "Slow Wingback", "Wing Back", 1.0, 0.99),
+        (2, "Busy Wingback", "Wing Back", 9.0, 0.10),
+        (3, "Steady Wingback", "Wing Back", 5.0, 0.50),
+        (4, "Carrying Centreback", "Centre Back", 12.0, 0.95),
+        (2, "Busy Wingback", "Wing Back", 8.0, 0.09),  # the same player, another league
+    ]
+    vectors = np.array([[s, (1 - s * s) ** 0.5] for *_, s in rows], dtype=np.float32)
+    return VectorStore(
+        [r[0] for r in rows],
+        [r[1] for r in rows],
+        [f"{r[1]} is a {r[2]}." for r in rows],
+        vectors,
+        attrs={
+            "position_group": ["DEF"] * len(rows),
+            "position_role": [r[2] for r in rows],
+            "metrics": [{"carries_per90": r[3]} for r in rows],
+        },
+    )
+
+
+class _QueryClient(_FakeClient):
+    def embed(self, texts, kind="document"):
+        return [[1.0, 0.0] for _ in texts]
+
+
+def test_a_leaders_question_is_ordered_by_the_metric_not_by_similarity():
+    """Similarity ranks Slow Wingback first; the question asks who carries the most."""
+    from footyvision.rag.assistant import ScoutAssistant
+
+    found = ScoutAssistant(_leaders_store(), _QueryClient()).retrieve(
+        "Which wing-backs make the most carries?", k=3
+    )
+    assert [h.name for h in found.hits] == ["Busy Wingback", "Steady Wingback", "Slow Wingback"]
+    assert found.ranked_by == "carries_per90"
+
+
+def test_the_role_filter_keeps_the_centre_back_out_of_a_wing_back_question():
+    """He carries more than any of them, and is in the same position group. Only the role
+    tells him apart, which is why the role had to become a filter."""
+    from footyvision.rag.assistant import ScoutAssistant
+
+    found = ScoutAssistant(_leaders_store(), _QueryClient()).retrieve(
+        "Which wing-backs make the most carries?", k=5
+    )
+    assert "Carrying Centreback" not in {h.name for h in found.hits}
+
+
+def test_a_player_with_two_seasons_takes_one_slot():
+    from footyvision.rag.assistant import ScoutAssistant
+
+    found = ScoutAssistant(_leaders_store(), _QueryClient()).retrieve(
+        "Which wing-backs make the most carries?", k=5
+    )
+    ids = [h.player_id for h in found.hits]
+    assert len(ids) == len(set(ids))
+
+
+def test_a_description_is_still_ranked_by_similarity():
+    """ "a wing-back who carries well" describes a player; it does not ask for an ordering."""
+    from footyvision.rag.assistant import ScoutAssistant
+
+    found = ScoutAssistant(_leaders_store(), _QueryClient()).retrieve(
+        "a wing-back who carries the ball well", k=3
+    )
+    assert found.ranked_by is None
+    assert found.hits[0].name == "Slow Wingback"
+
+
+def test_the_prompt_says_the_list_is_the_top_of_the_whole_pool():
+    from footyvision.rag.assistant import build_prompt
+
+    system, _ = build_prompt("Who carries most?", ["x"], ranked_by="carries_per90")
+    assert "highest in carries per 90" in system
+
+
+def test_metric_values_attach_to_their_own_player():
+    """`metric_notes` skips a player with no values, and the notes used to be paired with
+    the profiles by position — so one player's figures went into the next one's paragraph."""
+    import numpy as np
+
+    from footyvision.rag.assistant import ScoutAssistant
+    from footyvision.rag.store import VectorStore
+
+    store = VectorStore(
+        [1, 2],
+        ["No Data", "Has Data"],
+        ["No Data profile.", "Has Data profile."],
+        np.array([[1.0, 0.0], [0.9, 0.1]], dtype=np.float32),
+        attrs={"metrics": [None, {"tackles_per90": 3.21}]},
+    )
+    out = ScoutAssistant(store, _QueryClient()).answer("who tackles well", k=2)
+    by_player = dict(zip(["No Data", "Has Data"], out["contexts"], strict=True))
+    assert "3.21" not in by_player["No Data"]
+    assert "3.21" in by_player["Has Data"]
+
+
+@pytest.mark.parametrize(
+    ("question", "role", "group"),
+    [
+        ("Which wing-backs make the most carries?", "Wing Back", "DEF"),
+        ("Que defesas centrais tem mais assistencias?", "Centre Back", "DEF"),
+        ("Que pontas de lanca tem mais desarmes?", "Centre Forward", "FWD"),
+        ("Which defenders make the most interceptions?", None, "DEF"),
+        # The first position word is the subject, so these stay midfielders.
+        ("medio ala criativo", None, "MID"),
+        ("a midfielder who plays as a winger", None, "MID"),
+    ],
+)
+def test_a_precise_role_is_read_only_when_it_is_the_subject(question, role, group):
+    from footyvision.rag.constraints import parse_constraints
+
+    parsed = parse_constraints(question)
+    assert (parsed.position_role, parsed.position_group) == (role, group)
+
+
+@pytest.mark.parametrize(
+    ("question", "metric"),
+    [
+        ("Que avancados rematam mais vezes por 90 minutos?", "shots_per90"),
+        ("Which midfielders press the most?", "pressures_per90"),
+        ("Que jogadores conduzem mais a bola?", "carries_per90"),
+        ("Which players complete the most passes?", "passes_completed_per90"),
+    ],
+)
+def test_verbs_name_their_metric_as_well_as_nouns(question, metric):
+    """Each of these used to find no metric at all, which quietly turned a ranking
+    question back into a similarity one."""
+    from footyvision.rag.metrics import asks_for_leaders, metrics_in
+
+    assert metrics_in(question)[0] == metric
+    assert asks_for_leaders(question)
