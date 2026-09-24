@@ -819,3 +819,25 @@ def test_verbs_name_their_metric_as_well_as_nouns(question, metric):
 
     assert metrics_in(question)[0] == metric
     assert asks_for_leaders(question)
+
+
+def test_the_client_records_the_model_that_actually_answered(monkeypatch):
+    """`chat` tries the local endpoint first, so asking for Gemini is no evidence that
+    Gemini wrote the text. An evaluation run with LM Studio open was answered locally and
+    labelled as Gemini's; the label now comes from the server's own response."""
+    from footyvision.llm import client as llm
+
+    class _Response:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {
+                "model": "google/gemma-4-e4b",
+                "choices": [{"message": {"content": "An answer."}, "finish_reason": "stop"}],
+            }
+
+    monkeypatch.setattr(llm.httpx, "post", lambda *a, **k: _Response())
+    c = llm.LLMClient(base_url="http://localhost:1234/v1", cloud_model="gemini-3.1-flash-lite")
+    assert c.chat("system", "user") == "An answer."
+    assert c.last_chat_model == "google/gemma-4-e4b"

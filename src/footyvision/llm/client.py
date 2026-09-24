@@ -138,7 +138,13 @@ class LLMClient:
         }
         resp = httpx.post(url, json=payload, headers=headers, timeout=self.timeout)
         resp.raise_for_status()
-        choice = resp.json()["choices"][0]
+        data = resp.json()
+        # The model that actually answered, as the server names it. `chat` tries the local
+        # endpoint before the cloud one, so the model a caller *asked for* is not evidence
+        # of which one wrote the text: with LM Studio running, an evaluation configured for
+        # Gemini was answered by the local model and labelled as Gemini's.
+        self.last_chat_model = str(data.get("model") or model)
+        choice = data["choices"][0]
         msg = choice.get("message", {})
         content = (msg.get("content") or msg.get("reasoning_content") or "").strip()
         # A model that ran out of budget stops wherever it happened to be, which is often
@@ -169,6 +175,7 @@ class LLMClient:
         sentence, which is tidier than a severed word but still not the whole reply.
         """
         self.last_truncated = False
+        self.last_chat_model: str | None = None
         local_exc: Exception | None = None
         # Only try local if it is localhost or explicitly configured
         if self.base_url and ("localhost" in self.base_url or "127.0.0.1" in self.base_url):

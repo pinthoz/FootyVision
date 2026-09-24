@@ -158,7 +158,9 @@ def generate(
                 # Which model wrote it. Read from settings at publish time, this reported
                 # whatever production was configured with rather than what actually
                 # answered — and the two diverge the moment a quota forces a switch.
-                "answered_by": model or get_settings().cloud_llm_model,
+                "answered_by": assistant.client.last_chat_model
+                or model
+                or get_settings().cloud_llm_model,
             }
         )
         save(rows, cache)
