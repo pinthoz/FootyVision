@@ -84,16 +84,31 @@ SNAPSHOT = Path("src/footyvision/eval/ragas.json")
 QUESTIONS: tuple[Question, ...] = all_questions()
 
 
+# Server-side and temporary: the request was fine and the service could not take it just
+# then. Gemini answers 503 when a model is overloaded, and a run of 241 questions meets
+# that often enough that stopping on it meant restarting by hand every few minutes.
+_TRANSIENT = ("429", "rate limit", "500 internal", "502 bad gateway", "503 service", "504 gateway")
+
+
 def _is_rate_limit(error: Exception) -> bool:
-    return "429" in str(error) or "rate limit" in str(error).lower()
+    """Whether waiting and asking again is the right response to this error."""
+    text = str(error).lower()
+    return any(marker in text for marker in _TRANSIENT) or "overloaded" in text
 
 
-def with_backoff(call, tries: int = 5, base: float = 30.0):
-    """Retry through a rate limit, and give up on anything else immediately.
+def _reason(error: Exception) -> str:
+    text = str(error).lower()
+    return "rate limited" if "429" in text or "rate limit" in text else "service unavailable"
 
-    The free Gemini tier allows a handful of requests a minute, and a run of this
-    length will meet that ceiling. Waiting is the correct response to a 429 and only to
-    a 429 — retrying a malformed request just spends the quota faster.
+
+def with_backoff(call, tries: int = 6, base: float = 30.0):
+    """Retry through a rate limit or a temporarily unavailable server, and give up on
+    anything else immediately.
+
+    The free Gemini tier allows a handful of requests a minute, and a run of this length
+    will meet that ceiling; it also meets 503s when the model is overloaded. Waiting is
+    the correct response to both, and to nothing else — retrying a malformed request just
+    spends the quota faster.
     """
     for attempt in range(tries):
         try:
@@ -102,7 +117,7 @@ def with_backoff(call, tries: int = 5, base: float = 30.0):
             if not _is_rate_limit(error) or attempt == tries - 1:
                 raise
             wait = base * (attempt + 1)
-            print(f"      rate limited, waiting {wait:.0f}s", flush=True)
+            print(f"      {_reason(error)}, waiting {wait:.0f}s", flush=True)
             time.sleep(wait)
     raise AssertionError("unreachable")
 

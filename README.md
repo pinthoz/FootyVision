@@ -176,10 +176,14 @@ This project deliberately reports what public/free data **can't** do, not just w
   served as a range for that reason. A quarter of its labels used to be somebody else's:
   fuzzy matching gave Casemiro "Henrique"'s value and 76 women the values of men with
   similar names, until matching moved from string similarity to shared name tokens.
-- The **RAGAS evaluation** (241 questions, one local judge) scores faithfulness 0.82 and
-  context precision 0.35. The low precision is concentrated where a question asks for a
-  shortlist and the answer then picks one of the six players retrieved — the metric
-  penalises exactly the comparison pool a scout wants.
+- The **RAGAS evaluation** (241 questions, one answer model, one local judge) scores
+  faithfulness 0.81 and context precision 0.36. The low precision is concentrated where a
+  question asks for a shortlist and the answer then picks one of the six players retrieved
+  — the metric penalises exactly the comparison pool a scout wants. It also cannot tell
+  whether those six were the right six: when "who makes the most X" was changed to return
+  the actual leaders (from 12 of 42 to 42 of 42), RAGAS saw no significant change in
+  context precision, and a borderline gain in faithfulness only once the 163 questions
+  whose retrieval did not change were used to measure run-to-run noise.
 
 ## Development
 
